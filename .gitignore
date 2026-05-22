@@ -1,0 +1,19 @@
+﻿################################################################################
+# 此 .gitignore 文件已由 Microsoft(R) Visual Studio 自动创建。
+################################################################################
+
+/.vs/
+/Rish/Debug
+/Rish/Release
+/Rish/x64
+/Debug
+/Release
+/x64
+/dist/
+/.cache.dat
+/Rish.exe
+/doc/codex-session-handoff.md
+*.user
+*.suo
+*.VC.db
+*.opendb

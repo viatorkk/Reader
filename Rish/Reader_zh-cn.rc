@@ -1,0 +1,625 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#ifndef APSTUDIO_INVOKED
+#include "targetver.h"
+#endif
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "windows.h"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_READER              ICON                    "book.ico"
+
+IDI_SMALL               ICON                    "small.ico"
+
+IDI_BOOK                ICON                    "book.ico"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDC_READER MENU
+BEGIN
+    POPUP "文件(&F)"
+    BEGIN
+        MENUITEM "打开(&O)",                      IDM_OPEN
+        MENUITEM "WeRead(&W)",                    IDM_WEREAD
+        MENUITEM SEPARATOR
+        MENUITEM "清空(&C)",                      IDM_CLEAR
+        MENUITEM SEPARATOR
+        MENUITEM "退出(&X)",                      IDM_EXIT
+    END
+    MENUITEM "目录(&V)",                      IDM_VIEW
+    MENUITEM "书签(&M)",                      IDM_MARK
+    POPUP "设置(&S)"
+    BEGIN
+        MENUITEM "显示设置",                        IDM_DISPLAY
+        MENUITEM "基本设置",                        IDM_CONFIG
+        MENUITEM "高级设置",                        IDM_ADVSET
+        MENUITEM "按键设置",                        IDM_KEYSET
+        MENUITEM "标签设置",                        IDM_TAGSET
+        MENUITEM SEPARATOR
+        MENUITEM "还原默认设置",                      IDM_DEFAULT
+    END
+    POPUP "帮助(&H)"
+    BEGIN
+        MENUITEM "关于 ...",                      IDM_ABOUT
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator
+//
+
+IDC_READER ACCELERATORS
+BEGIN
+    "?",            IDM_ABOUT,              ASCII,  ALT
+    "/",            IDM_ABOUT,              ASCII,  ALT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 178, 149
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_BORDER | WS_SYSMENU
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确认",IDOK,121,125,50,17,WS_GROUP
+    PUSHBUTTON      "打赏",IDC_BUTTON_REWARD,7,125,50,17
+    PUSHBUTTON      "关注",IDC_BUTTON_FOLLOW,9,32,50,17
+    CTEXT           "Rish, Version x.x.x.x",IDC_STATIC_VERSION,7,7,164,8,SS_NOPREFIX
+    LTEXT           "Copyright (C) 2019-2022",IDC_STATIC,7,102,164,8
+    LTEXT           "作者：余彬彬",IDC_STATIC,7,80,164,8
+    LTEXT           "邮件：binbyu@qq.com",IDC_STATIC,7,91,164,8
+    LTEXT           "基于 Reader 的无在线书源衍生版",IDC_STATIC_LINK,7,113,164,8
+    LTEXT           "本地阅读版本，不含在线书源",IDC_STATIC,9,53,164,8
+    LTEXT           "原 Reader 微信公众号：",IDC_STATIC,64,36,109,8
+    GROUPBOX        "",IDC_STATIC,7,23,164,44
+END
+
+IDD_SETTING DIALOGEX 0, 0, 179, 268
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "基本设置"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    COMBOBOX        IDC_COMBO_SPEED,120,20,40,115,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_LEFTLINE,120,36,40,14,ES_AUTOHSCROLL
+    CONTROL         "禁用鼠标点击翻页",IDC_RADIO_MODE1,"Button",BS_AUTORADIOBUTTON | WS_GROUP,20,54,80,10
+    CONTROL         "鼠标左右键点击翻页",IDC_RADIO_MODE2,"Button",BS_AUTORADIOBUTTON,20,69,88,10
+    CONTROL         "鼠标左键点击左右侧翻页",IDC_RADIO_MODE3,"Button",BS_AUTORADIOBUTTON,20,84,104,10
+    CONTROL         "翻页",IDC_RADIO_ATPAGE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,108,121,32,10
+    CONTROL         "滚动",IDC_RADIO_ATWHEEL,"Button",BS_AUTORADIOBUTTON,143,121,32,10
+    COMBOBOX        IDC_COMBO_APM,70,135,54,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_ELAPSE,127,135,24,14,ES_AUTOHSCROLL
+    CONTROL         "隐藏任务栏图标",IDC_CHECK_TASKBAR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,20,175,72,10
+    CONTROL         "最小化托盘",IDC_CHECK_TRAY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,104,175,56,10
+    CONTROL         "左右键同时按下隐藏窗口",IDC_CHECK_LRHIDE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,20,211,104,10
+    DEFPUSHBUTTON   "确定",IDOK,68,247,50,14
+    PUSHBUTTON      "取消",IDCANCEL,122,247,50,14
+    GROUPBOX        "翻页设置",IDC_STATIC,7,7,165,93
+    LTEXT           "文本滚动速度",IDC_STATIC,20,22,49,8
+    LTEXT           "自动翻页时间",IDC_STATIC,20,137,49,8
+    LTEXT           "毫秒",IDC_STATIC,155,143,17,8
+    GROUPBOX        "窗口设置",IDC_STATIC,7,161,165,29
+    GROUPBOX        "快捷设置",IDC_STATIC,7,196,165,45
+    LTEXT           "自动翻页模式",IDC_STATIC,20,121,49,8
+    GROUPBOX        "自动翻页",IDC_STATIC,7,107,165,47
+    LTEXT           "保留上页行数(单位：行)",IDC_STATIC,20,38,95,8
+    CONTROL         "ESC键隐藏窗口",IDC_CHECK_ESCHIDE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,20,227,69,10
+END
+
+IDD_JUMP_PROGRESS DIALOGEX 0, 0, 117, 58
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "进度百分百跳转"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,7,37,50,14
+    PUSHBUTTON      "取消",IDCANCEL,59,37,50,14
+    EDITTEXT        IDC_EDIT_JP,34,7,51,14,ES_AUTOHSCROLL
+    LTEXT           "进度：",IDC_STATIC,7,9,25,8
+    LTEXT           "%",IDC_STATIC,87,9,8,8
+END
+
+IDD_KEYSET DIALOGEX 0, 0, 221, 358
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "按键设置"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,114,337,50,14
+    PUSHBUTTON      "取消",IDCANCEL,164,337,50,14
+    PUSHBUTTON      "恢复默认配置",IDC_BUTTON_DEFAULT,7,337,58,14
+    CONTROL         "隐藏/显示窗口",IDC_CHECK_HIDE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,22,61,10
+    CONTROL         "",IDC_HK_HIDE,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,20,102,14
+    CONTROL         "隐藏/显示边框",IDC_CHECK_BORDER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,65,61,10
+    CONTROL         "",IDC_HK_BORDER,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,63,102,14
+    CONTROL         "全屏/退出全屏",IDC_CHECK_FULLSCREEN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,80,61,10
+    CONTROL         "",IDC_HK_FULLSCREEN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,78,102,14
+    CONTROL         "置顶/取消置顶",IDC_CHECK_TOP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,95,61,10
+    CONTROL         "",IDC_HK_TOP,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,93,102,14
+    CONTROL         "打开文件",IDC_CHECK_OPEN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,110,61,10
+    CONTROL         "",IDC_HK_OPEN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,108,102,14
+    CONTROL         "添加书签",IDC_CHECK_ADDMARK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,125,61,10
+    CONTROL         "",IDC_HK_ADDMARK,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,123,102,14
+    CONTROL         "自动翻页",IDC_CHECK_AUTOPAGE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,140,61,10
+    CONTROL         "",IDC_HK_AUTOPAGE,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,138,102,14
+    CONTROL         "全文查找",IDC_CHECK_SEARCH,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,155,61,10
+    CONTROL         "",IDC_HK_SEARCH,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,153,102,14
+    CONTROL         "进度跳转",IDC_CHECK_JUMP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,170,61,10
+    CONTROL         "",IDC_HK_JUMP,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,168,102,14
+    CONTROL         "编辑模式",IDC_CHECK_EDIT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,185,61,10
+    CONTROL         "",IDC_HK_EDIT,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,86,183,102,14
+    CONTROL         "上一页",IDC_CHECK_PAGEUP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,200,61,10
+    CONTROL         "",IDC_HK_PAGEUP,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,198,102,14
+    CONTROL         "下一页",IDC_CHECK_PAGEDOWN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,215,61,10
+    CONTROL         "",IDC_HK_PAGEDOWN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,213,102,14
+    CONTROL         "上 N 行",IDC_CHECK_LINEUP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,230,61,10
+    CONTROL         "",IDC_HK_LINEUP,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,228,102,14
+    CONTROL         "下 N 行",IDC_CHECK_LINEDOWN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,245,61,10
+    CONTROL         "",IDC_HK_LINEDOWN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,243,102,14
+    CONTROL         "上一章",IDC_CHECK_CHAPTERUP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,260,61,10
+    CONTROL         "",IDC_HK_CHAPTERUP,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,258,102,14
+    CONTROL         "下一章",IDC_CHECK_CHAPTERDOWN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,275,61,10
+    CONTROL         "",IDC_HK_CHAPTERDOWN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,273,102,14
+    CONTROL         "字体放大",IDC_CHECK_FONTZOOMIN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,290,61,10
+    CONTROL         "",IDC_HK_FONTZOOMIN,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,288,102,14
+    CONTROL         "字体缩小",IDC_CHECK_FONTZOOMOUT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,305,61,10
+    CONTROL         "",IDC_HK_FONTZOOMOUT,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,303,102,14
+    CONTROL         "WeRead 刷新",IDC_CHECK_WEREAD_REFRESH,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,320,61,10
+    CONTROL         "",IDC_HK_WEREAD_REFRESH,"msctls_hotkey32",WS_BORDER | WS_TABSTOP,85,318,102,14
+    CONTROL         "全局快捷键",IDC_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,134,51,56,10
+    GROUPBOX        "热键设置",IDC_STATIC,7,7,207,34
+    GROUPBOX        "快捷键设置",IDC_STATIC,7,45,207,291
+END
+
+IDD_ADVSET DIALOGEX 0, 0, 203, 131
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "高级设置"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确认",IDOK,40,110,50,14
+    PUSHBUTTON      "取消",IDCANCEL,114,110,50,14
+    GROUPBOX        "TXT目录解析方式",IDC_STATIC,7,7,189,86
+    CONTROL         "默认",IDC_RADIO_CPT_DEFAULT,"Button",BS_AUTORADIOBUTTON,8,25,56,10
+    CONTROL         "关键字",IDC_RADIO_CPT_KEYWORD,"Button",BS_AUTORADIOBUTTON,72,25,56,10
+    CONTROL         "正则表达式",IDC_RADIO_CPT_REGEX,"Button",BS_AUTORADIOBUTTON,136,25,56,10
+    EDITTEXT        IDC_EDIT_CPT_KEYWORD,57,47,136,14,ES_AUTOHSCROLL
+    LTEXT           "以关键字开头",IDC_STATIC,7,50,49,8
+    LTEXT           "正则表达式",IDC_STATIC,7,67,41,8
+    EDITTEXT        IDC_EDIT_CPT_REGEX,57,65,136,14,ES_AUTOHSCROLL
+END
+
+IDD_REWARD DIALOGEX 0, 0, 174, 169
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_SYSMENU
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+END
+
+IDD_TAGSET DIALOGEX 0, 0, 297, 237
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "标签设置"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "关闭",IDOK,240,216,50,14
+    CTEXT           "Static",IDC_STATIC_PREVIEW,7,7,283,49,SS_CENTERIMAGE
+    CONTROL         "",IDC_LIST_TAGSET,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,7,65,283,144
+    PUSHBUTTON      "新增",IDC_BUTTON_ADD,7,216,50,14
+    PUSHBUTTON      "清空",IDC_BUTTON_RMALL,59,216,50,14
+END
+
+IDD_TAGITEM DIALOGEX 0, 0, 271, 116
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "标签"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,159,95,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,213,95,50,14
+    EDITTEXT        IDC_EDIT_TAGKW,41,7,116,14,ES_AUTOHSCROLL
+    LTEXT           "关键字",IDC_STATIC,7,9,25,8
+    PUSHBUTTON      "字体",IDC_BUTTON_TAGFONT,159,7,50,14
+    PUSHBUTTON      "背景颜色",IDC_BUTTON_TAGBG,213,7,50,14
+    CTEXT           "Static",IDC_STATIC_PREVIEW,7,32,257,45,SS_CENTERIMAGE
+END
+
+IDD_DISPLAYSET DIALOGEX 0, 0, 265, 304
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "显示设置"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确认",IDOK,151,286,50,14
+    PUSHBUTTON      "取消",IDCANCEL,208,286,50,14
+    CONTROL         "使用相同字体",IDC_CHECK_SAME,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,20,106,10
+    PUSHBUTTON      "正文字体",IDC_BUTTON_TEXT_FONT,19,34,50,14
+    PUSHBUTTON      "章节字体",IDC_BUTTON_CHAPTER_FONT,76,34,50,14
+    PUSHBUTTON      "背景颜色",IDC_BUTTON_BGCOLOR,19,67,50,14
+    CONTROL         IDS_FULLSRCEEN,IDC_STATIC_PICKER,"Static",SS_BITMAP | SS_CENTERIMAGE | SS_REALSIZEIMAGE | WS_GROUP,76,66,15,15
+    CONTROL         "启用背景图片",IDC_CHECK_BIENABLE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,19,103,64,10
+    COMBOBOX        IDC_COMBO_BIMODE,76,117,50,62,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_BIFILE,19,134,105,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_BUTTON_BISEL,126,134,17,14
+    EDITTEXT        IDC_EDIT_CHARGAP,103,172,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_LINEGAP,103,187,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_PARAGRAPHGAP,103,202,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_BORDER,103,217,40,14,ES_AUTOHSCROLL
+    CONTROL         "目录字体跟随文本",IDC_CHECK_MENU_FONT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,160,174,80,10
+    CONTROL         "Word wrap",IDC_CHECK_WORD_WRAP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,160,189,51,10
+    CONTROL         "首行缩进",IDC_CHECK_INDENT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,160,204,48,10
+    CONTROL         "压缩空行",IDC_CHECK_BLANKLINES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,160,219,48,10
+    CONTROL         "",IDC_STATIC_PREVIEW,"Static",SS_OWNERDRAW | WS_GROUP,147,7,111,144
+    GROUPBOX        "字体设置",IDC_STATIC,7,7,137,45
+    GROUPBOX        "背景颜色",IDC_STATIC,7,56,137,30
+    GROUPBOX        "背景图片",IDC_STATIC,7,90,137,62
+    LTEXT           "显示模式：",IDC_STATIC,19,119,41,8
+    GROUPBOX        "布局排版 （预览框不显示效果）",IDC_STATIC,7,158,251,124
+    LTEXT           "行距 (单位：像素)",IDC_STATIC,19,190,64,8
+    LTEXT           "内部边框 ( 左,上,右,下)",IDC_STATIC,19,220,81,8
+    LTEXT           "段距 (单位：像素)",IDC_STATIC,19,205,64,8
+    LTEXT           "字距 (单位：像素)",IDC_STATIC,19,175,64,8
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,147,165,1,96
+    LTEXT           "#FFFFFF",IDC_STATIC_RGB,98,67,37,14,SS_CENTERIMAGE
+    CONTROL         "章前分页",IDC_CHECK_CHAPTER_PAGE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,160,234,48,10
+    LTEXT           "窗口透明度(40-100%)",IDC_STATIC,19,250,82,8
+    EDITTEXT        IDC_EDIT_ALPHA,103,247,40,14,ES_AUTOHSCROLL
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 171
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 142
+    END
+
+    IDD_SETTING, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 172
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 261
+    END
+
+    IDD_JUMP_PROGRESS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 109
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 51
+    END
+    IDD_KEYSET, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 214
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 336
+    END
+
+    IDD_ADVSET, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 196
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 124
+    END
+
+    IDD_REWARD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 167
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 162
+    END
+
+    IDD_TAGSET, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 290
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 230
+    END
+    IDD_TAGITEM, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 264
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 109
+    END
+
+    IDD_DISPLAYSET, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 258
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 300
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#ifndef APSTUDIO_INVOKED\r\n"
+    "#include ""targetver.h""\r\n"
+    "#endif\r\n"
+    "#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""windows.h""\r\n"
+    "#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// GIF
+//
+
+IDR_GIF_LOADING         GIF                     "loading.gif"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_BITMAP_PICKER       BITMAP                  "picker.bmp"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Cursor
+//
+
+IDC_CURSOR_PICKER       CURSOR                  "picker.cur"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// PNG
+//
+
+IDB_PNG_NEW             PNG                     "new.png"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2,0,0,5
+ PRODUCTVERSION 2,0,0,5
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Author : Binbin Yu"
+            VALUE "FileDescription", "A minimalist novel reader"
+            VALUE "FileVersion", "2.0.0.5"
+            VALUE "InternalName", "Rish.exe"
+            VALUE "LegalCopyright", "Copyright (C) 2019-2020"
+            VALUE "OriginalFilename", "Rish.exe"
+            VALUE "ProductName", "Rish"
+            VALUE "ProductVersion", "2.0.0.5"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE           "Rish"
+    IDS_ERROR               "错误"
+    IDS_WARN                "警告"
+    IDS_SUCC                "成功"
+    IDC_STATUSBAR           "STATUS"
+    IDS_INVALID_LINEGAP     "行距错误!"
+    IDS_INVALID_INBORDER    "内部边框格式错误."
+    IDC_READER              "RISH"
+    IDS_INVALID_AUTOPAGE    "自动翻页时间不正确."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_INVALID_PORT        "端口号不正确!"
+    IDS_PLS_SEL_IMG         "请选择一张图片"
+    IDS_INVALID_IMG         "图片格式不正确!"
+    IDS_IMG_NOT_EXIST       "图片不存在!"
+    IDS_INVALID_LAYOUT      "非法背景模式!"
+    IDS_INVALID_VALUE       "非法数值!"
+    IDS_BOOKMARK            "书签"
+    IDS_ADD_BOOKMARK_TIPS   "请确定是否添加书签?"
+    IDS_OPEN_FILE_FAILED    "打开文件失败."
+    IDS_UNKNOWN_FORMAT      "文件格式错误."
+    IDS_EMPTY_FILE          "无法打开空文件."
+    IDS_INIT_CACHE_FAIL     "初始化缓存文件失败."
+    IDS_SAVE_CACHE_FAIL     "保存缓存文件失败."
+    IDS_EMPTY_KEYWORD       "关键字不能为空!"
+    IDS_EMPTY_REGEX         "正则表达式不能为空!"
+    IDS_INVALID_REGEX       "正则表达式错误!"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_SAVE_TEXT_TIPS      "文本有改动，是否保存？"
+    IDS_SAVE_FILE           "文件保存"
+    IDS_SAVE_FAIL           "保存文本失败"
+    IDS_KEYVALUE_EMPTY      "【%s】\r\n\r\n按键不能为空, 请重新设置."
+    IDS_KEYVALUE_DUPLICATE  "【%s】\r\n\r\n按键已经使用, 请重新设置."
+    IDS_REGISTER_FAIL       "注册热键【%s】失败, 可能该热键已经被占用.\r\n请进入【设置】>【按键设置】重新设置该热键!"
+    IDS_REQUEST_CONTENT_FAIL "请求章节文本失败.\r\n请重试."
+    IDS_FIELED_EMPTY        "字段不能为空."
+    IDS_DECOMPRESS_FAIL     "解压数据失败\r\n请重试."
+    IDS_PARSE_FAIL          "未找到该书籍\r\n或者解析数据失败，请确认xpath是否正确."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_TITLE               "标题"
+    IDS_HIDE_SHOW_WINDOW    "隐藏/显示窗口"
+    IDS_HIDE_SHOW_BORDER    "隐藏/显示边框"
+    IDS_FULLSRCEEN          "全屏/退出全屏"
+    IDS_TOPMOST             "置顶/取消置顶"
+    IDS_OPEN_FILE           "打开文件"
+    IDS_ADD_BOOKMARK        "添加书签"
+    IDS_AUTO_PAGE           "自动翻页"
+    IDS_TEXT_SEARCH         "全文查找"
+    IDS_PROGRESS_JUMP       "进度跳转"
+    IDS_EDIT_MODE           "编辑模式"
+    IDS_PAGE_UP             "上一页"
+    IDS_PAGE_DOWN           "下一页"
+    IDS_LINE_UP             "上 N 行"
+    IDS_LINE_DOWN           "下 N 行"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_CHAPTER_UP          "上一章"
+    IDS_CHAPTER_DOWN        "下一章"
+    IDS_FIXED_TIME          "固定时间"
+    IDS_DYNAMIC_CALC        "乘以字数"
+    IDS_STRETCH             "拉伸缩放"
+    IDS_TILE                "平铺"
+    IDS_TILEFLIP            "旋转平铺"
+    IDS_MENU_OPEN           "打开(&O)"
+    IDS_MENU_CLEAR          "清空(&C)"
+    IDS_MENU_EXIT           "退出(&X)"
+    IDS_MENU_FILE           "文件(&F)"
+    IDS_EDIT_MODE_TIPS      "当前为【编辑模式】，再次使用快捷键可退出"
+    IDS_RESTORE_DEFAULT     "确定需要恢复默认设置吗？"
+    IDS_FONT_ZOOMIN         "字体放大"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_FONT_ZOOMOUT        "字体缩小"
+    IDS_WEREAD_REFRESH      "WeRead 刷新"
+    IDS_AUTOPAGING          "自动翻页中..."
+    IDS_NULL                "无"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_SINGLE_LINE         "单行"
+    IDS_DOUBLE_LINE         "双行"
+    IDS_THREE_LINE          "三行"
+    IDS_FULL_PAGE           "整页"
+    IDS_FILE_ISEXIST        "同名文件已经存在！是否覆盖原来的文件？"
+    IDS_DELETE              "删除"
+    IDS_MOVE_UP             "上移"
+    IDS_MOVE_DOWN           "下移"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_DELETE_FILE_CFM     "确定要【移除】该本书籍吗？\r\n%s"
+    IDS_CLEAR_ALL_FILES     "确定要【清空】全部书籍吗？"
+    IDS_ENABLE              "启用"
+    IDS_DISABLE             "禁用"
+    IDS_KEYWORD             "关键字"
+    IDS_FONT                "字体"
+    IDS_BG_COLOR            "背景颜色"
+    IDS_EDIT                "编辑"
+    IDS_TAGSET_FULL         "标签已满"
+    IDS_TAGITEM_EXIST       "标签已存在"
+    IDS_ID                  "编号"
+    IDS_DELETE_CFM          "确认删除？"
+    IDS_RMALL_CFM           "确认清空？"
+    IDS_REGEX               "正则表达式"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_CLEAR               "清空"
+    IDS_INVALID_CHARGAP     "字距错误!"
+    IDS_INVALID_PARAGRAPHGAP "段距错误!"
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
