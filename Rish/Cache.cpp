@@ -1,4 +1,4 @@
-#include "framework.h"
+﻿#include "framework.h"
 #include "Cache.h"
 #include "Keyset.h"
 #ifdef ENABLE_NETWORK
@@ -43,14 +43,31 @@ static BOOL IsChineseReadingFontAtPointSize(const LOGFONT* lf, int pointSize)
     return memcmp(lf, &expected, sizeof(expected)) == 0;
 }
 
+static BOOL IsChineseReadingFontFamilyAtPointSize(const LOGFONT* lf, int pointSize)
+{
+    HDC hdc = GetDC(NULL);
+    int currentSize;
+
+    if (!lf || !hdc)
+        return FALSE;
+
+    currentSize = abs(MulDiv(lf->lfHeight, 72, GetDeviceCaps(hdc, LOGPIXELSY)));
+    ReleaseDC(NULL, hdc);
+
+    return currentSize == pointSize
+        && 0 == _tcsicmp(lf->lfFaceName, _T("Microsoft YaHei UI"));
+}
+
 static void NormalizeChineseFonts(header_t* header)
 {
-    const int PointSize = 12;
+    const int TextPointSize = 16;
+    const int TitlePointSize = 18;
 
     if (IsLegacyLatinDefaultFont(&header->font)
-        || IsChineseReadingFontAtPointSize(&header->font, 14))
+        || IsChineseReadingFontAtPointSize(&header->font, 10)
+        || IsChineseReadingFontAtPointSize(&header->font, 12))
     {
-        SetChineseReadingFont(&header->font, PointSize);
+        SetChineseReadingFont(&header->font, TextPointSize);
     }
     else if (header->font.lfCharSet == ANSI_CHARSET)
     {
@@ -58,22 +75,35 @@ static void NormalizeChineseFonts(header_t* header)
     }
 
     if (IsLegacyLatinDefaultFont(&header->font_title)
+        || IsChineseReadingFontAtPointSize(&header->font_title, 10)
+        || IsChineseReadingFontAtPointSize(&header->font_title, 12)
         || IsChineseReadingFontAtPointSize(&header->font_title, 14))
     {
-        SetChineseReadingFont(&header->font_title, PointSize);
+        SetChineseReadingFont(&header->font_title, TitlePointSize);
     }
     else if (header->font_title.lfCharSet == ANSI_CHARSET)
     {
         header->font_title.lfCharSet = DEFAULT_CHARSET;
     }
 
+    // 旧版默认勾选“使用相同字体”，会导致章节字体按钮禁用，并且 18 号章节字体不会实际生效。
+    // 这里按字体名和字号判断默认字体，不用 memcmp(LOGFONT)，因为字体选择框和 DPI 逻辑
+    // 可能只改变 lfQuality、字符集或 lfHeight 的舍入值，但视觉上仍然是同一套默认字体。
+    if (header->use_same_font
+        && IsChineseReadingFontFamilyAtPointSize(&header->font, TextPointSize)
+        && IsChineseReadingFontFamilyAtPointSize(&header->font_title, TitlePointSize))
+    {
+        header->use_same_font = 0;
+    }
+
 #if ENABLE_TAG
     for (int i = 0; i < MAX_TAG_COUNT; i++)
     {
         if (IsLegacyLatinDefaultFont(&header->tags[i].font)
+            || IsChineseReadingFontAtPointSize(&header->tags[i].font, 12)
             || IsChineseReadingFontAtPointSize(&header->tags[i].font, 14))
         {
-            SetChineseReadingFont(&header->tags[i].font, PointSize);
+            SetChineseReadingFont(&header->tags[i].font, TextPointSize);
         }
         else if (header->tags[i].font.lfCharSet == ANSI_CHARSET)
         {
@@ -374,13 +404,16 @@ void Cache::default_header(header_t* header)
     // default font
     static LOGFONT lf;
     int i;
-    const int PointSize = 12;
-    SetChineseReadingFont(&lf, PointSize);
+    const int TextPointSize = 16;
+    const int TitlePointSize = 18;
+    SetChineseReadingFont(&lf, TextPointSize);
     memcpy(&header->font, &lf, sizeof(lf));
     header->font_color = 0x00;      // black
+    SetChineseReadingFont(&lf, TitlePointSize);
     memcpy(&header->font_title, &lf, sizeof(lf));
     header->font_color_title = 0x00;  // black
-    header->use_same_font = 1;
+    // 默认让章节字体独立，否则 18 号章节字体会被正文字体覆盖。
+    header->use_same_font = 0;
 
     // default style
     header->style = WS_OVERLAPPEDWINDOW;
@@ -446,6 +479,7 @@ void Cache::default_header(header_t* header)
     header->bg_image.enable = 0;
     header->disable_lrhide = 1;
     header->disable_eschide = 1;
+    header->mouse_leave_hide = 0;
 
     header->show_systray = 0;
     header->hide_taskbar = 0;
@@ -469,6 +503,7 @@ void Cache::default_header(header_t* header)
     }
     // default tags
 #if ENABLE_TAG
+    SetChineseReadingFont(&lf, TextPointSize);
     for (i = 0; i < MAX_TAG_COUNT; i++)
     {
         if (header->tags[i].font.lfHeight == 0)

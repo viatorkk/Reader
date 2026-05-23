@@ -26,6 +26,7 @@ typedef struct display_set_data_t
     int line_indent;
     int blank_lines;
     int chapter_page;
+    int mouse_leave_hide;
     int is_save;
 } display_set_data_t;
 
@@ -46,6 +47,7 @@ extern BOOL FileExists(TCHAR *file);
 extern void Save(HWND hWnd);
 extern VOID Invalidate(HWND hWnd, BOOL bOnlyClient, BOOL bErase);
 extern void SetTreeviewFont();
+extern void SetMouseLeaveHide(HWND hWnd);
 
 static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 static void _init_font_set(HWND hDlg);
@@ -65,8 +67,25 @@ static void _start_color_picker(HWND hDlg);
 static void _stop_color_picker(HWND hDlg);
 static void _update_bg_rgb(HWND hDlg);
 static void _update_preview(HDC hDC, RECT *rc);
+static void _ensure_min_font_point_size(LOGFONT *font, int point_size);
 
 #define MIN_ALPHA_PERCENT 40
+
+static void _ensure_min_font_point_size(LOGFONT *font, int point_size)
+{
+    HDC hdc = GetDC(NULL);
+    int current_size;
+
+    if (!font || !hdc)
+        return;
+
+    current_size = abs(MulDiv(font->lfHeight, 72, GetDeviceCaps(hdc, LOGPIXELSY)));
+    if (current_size < point_size)
+        font->lfHeight = -MulDiv(point_size, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+
+    ReleaseDC(NULL, hdc);
+}
+
 
 static int _alpha_to_percent(BYTE alpha)
 {
@@ -101,7 +120,8 @@ static BYTE _percent_to_alpha(int percent)
     (d)->word_wrap = (s)->word_wrap; \
     (d)->line_indent = (s)->line_indent; \
     (d)->blank_lines = (s)->blank_lines; \
-    (d)->chapter_page = (s)->chapter_page;
+    (d)->chapter_page = (s)->chapter_page; \
+    (d)->mouse_leave_hide = (s)->mouse_leave_hide;
 
 void OpenDisplaySetDlg(void)
 {
@@ -140,6 +160,7 @@ void OpenDisplaySetDlg(void)
 
         COPY_DISPLAY_PARAMS(&_display, _header);
 
+        SetMouseLeaveHide(_hWnd);
         Save(_hWnd);
         Invalidate(_hWnd, TRUE, FALSE);
 
@@ -246,6 +267,10 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
             res = (int)SendMessage(GetDlgItem(hDlg, IDC_CHECK_CHAPTER_PAGE), BM_GETCHECK, 0, NULL);
             _display.chapter_page = BST_CHECKED == res ? 1 : 0;
             break;
+        case IDC_CHECK_MOUSE_LEAVE_HIDE:
+            res = (int)SendMessage(GetDlgItem(hDlg, IDC_CHECK_MOUSE_LEAVE_HIDE), BM_GETCHECK, 0, NULL);
+            _display.mouse_leave_hide = BST_CHECKED == res ? 1 : 0;
+            break;
 
 
         default:
@@ -337,6 +362,7 @@ static void _init_layout_set(HWND hDlg)
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_INDENT), BM_SETCHECK, _display.line_indent ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_BLANKLINES), BM_SETCHECK, _display.blank_lines ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_CHAPTER_PAGE), BM_SETCHECK, _display.chapter_page ? BST_CHECKED : BST_UNCHECKED, NULL);
+    SendMessage(GetDlgItem(hDlg, IDC_CHECK_MOUSE_LEAVE_HIDE), BM_SETCHECK, _display.mouse_leave_hide ? BST_CHECKED : BST_UNCHECKED, NULL);
 }
 
 static void _enable_font_set(HWND hDlg, BOOL enable)
@@ -508,6 +534,7 @@ static UINT_PTR CALLBACK ChooseFontProc(HWND hWnd, UINT message, WPARAM wParam, 
 static void _open_fontdlg(HWND hDlg, int id)
 {
     CHOOSEFONT cf;            // common dialog box structure
+    LOGFONT font;
 
     if (IDC_BUTTON_TEXT_FONT == id)
     {
@@ -522,18 +549,24 @@ static void _open_fontdlg(HWND hDlg, int id)
 
     if (_p_font->lfCharSet == ANSI_CHARSET)
         _p_font->lfCharSet = DEFAULT_CHARSET;
+    font = *_p_font;
+    if (IDC_BUTTON_TEXT_FONT == id)
+        _ensure_min_font_point_size(&font, 16);
+    else if (IDC_BUTTON_CHAPTER_FONT == id)
+        _ensure_min_font_point_size(&font, 18);
 
     // Initialize CHOOSEFONT
     ZeroMemory(&cf, sizeof(cf));
     cf.lStructSize = sizeof (cf);
     cf.hwndOwner = hDlg;
-    cf.lpLogFont = _p_font;
+    cf.lpLogFont = &font;
     cf.rgbColors = *_p_font_color;
     cf.lpfnHook = ChooseFontProc;
     cf.Flags = CF_INITTOLOGFONTSTRUCT | CF_SCREENFONTS | CF_EFFECTS | CF_NOVERTFONTS | CF_ENABLEHOOK;
 
     if (ChooseFont(&cf))
     {
+        *_p_font = font;
         *_p_font_color = cf.rgbColors;
         _p_font->lfQuality = PROOF_QUALITY;
         if (_p_font->lfCharSet == ANSI_CHARSET)

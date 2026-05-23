@@ -597,6 +597,7 @@ class json_header_t
     cJSON* show_systray;
     cJSON* disable_lrhide;
     cJSON* disable_eschide;
+    cJSON* mouse_leave_hide;
     cJSON* word_wrap;
     cJSON* line_indent;
     cJSON* blank_lines;
@@ -654,6 +655,7 @@ public:
         show_systray = cJSON_AddNumberToObject(parent, "show_systray", data->show_systray);
         disable_lrhide = cJSON_AddNumberToObject(parent, "disable_lrhide", data->disable_lrhide);
         disable_eschide = cJSON_AddNumberToObject(parent, "disable_eschide", data->disable_eschide);
+        mouse_leave_hide = cJSON_AddNumberToObject(parent, "mouse_leave_hide", data->mouse_leave_hide);
         word_wrap = cJSON_AddNumberToObject(parent, "word_wrap", data->word_wrap);
         line_indent = cJSON_AddNumberToObject(parent, "line_indent", data->line_indent);
         blank_lines = cJSON_AddNumberToObject(parent, "blank_lines", data->blank_lines);
@@ -778,6 +780,7 @@ public:
         show_systray = cJSON_GetObjectItem(parent, "show_systray");
         disable_lrhide = cJSON_GetObjectItem(parent, "disable_lrhide");
         disable_eschide = cJSON_GetObjectItem(parent, "disable_eschide");
+        mouse_leave_hide = cJSON_GetObjectItem(parent, "mouse_leave_hide");
         word_wrap = cJSON_GetObjectItem(parent, "word_wrap");
         line_indent = cJSON_GetObjectItem(parent, "line_indent");
         blank_lines = cJSON_GetObjectItem(parent, "blank_lines");
@@ -972,6 +975,8 @@ public:
             data->disable_lrhide = disable_lrhide->valueint;
         if (disable_eschide)
             data->disable_eschide = disable_eschide->valueint;
+        if (mouse_leave_hide)
+            data->mouse_leave_hide = mouse_leave_hide->valueint ? 1 : 0;
         if (word_wrap)
             data->word_wrap = word_wrap->valueint;
         if (line_indent)

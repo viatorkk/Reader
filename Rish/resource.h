@@ -286,6 +286,7 @@
 #define IDC_CHECK_WEREAD_REFRESH        1171
 #define IDC_EDIT_ALPHA                  1172
 #define IDC_CHECK_TEXT_OPAQUE_BG_TRANSPARENT 1173
+#define IDC_CHECK_MOUSE_LEAVE_HIDE      1174
 #define IDM_OPEN                        32771
 #define IDM_DISPLAY                     32772
 #define IDM_DEFAULT                     32781
@@ -308,7 +309,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        150
 #define _APS_NEXT_COMMAND_VALUE         32806
-#define _APS_NEXT_CONTROL_VALUE         1174
+#define _APS_NEXT_CONTROL_VALUE         1175
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

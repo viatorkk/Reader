@@ -221,6 +221,7 @@ typedef struct header_t
     int show_systray;
     int disable_lrhide;
     int disable_eschide;
+    int mouse_leave_hide;
     int word_wrap;
     int line_indent;
     int blank_lines;

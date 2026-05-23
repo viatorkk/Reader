@@ -33,7 +33,7 @@ static BOOL _unregister_hotkey(HWND hWnd, DWORD kid);
 static void _load_keyset_desc(int id, TCHAR *desc, int size);
 
 #define IDHK_SHWIN ID_HOTKEY_SHOW_HIDE_WINDOW
-#define OPAQUE_TEXT_TRANSPARENT_BG_LABEL _T("\x6587\x5B57\x4E0D\x900F\x660E\xFF0C\x80CC\x666F\x900F\x660E")
+#define OPAQUE_TEXT_TRANSPARENT_BG_LABEL _T("\x80CC\x666F\x900F\x660E")
 keydata_t g_Keysets[KI_MAXCOUNT] = 
 {
     { MAKELONG(KT_HOTKEY, KI_HIDE),             IDHK_SHWIN, 0, 0, MAKEWORD('H', HOTKEYF_ALT),                      IDC_HK_HIDE,        IDC_CHECK_HIDE,        OnHideWin,     IDS_HIDE_SHOW_WINDOW },

@@ -61,6 +61,7 @@ static void _update_data(HWND hWnd, BOOL keep_header, BOOL do_save);
 static BYTE GetEffectiveWindowAlpha(void);
 static BOOL EnsureLayeredWindow(HWND hWnd);
 static void ApplyWindowTransparency(HWND hWnd);
+void SetMouseLeaveHide(HWND hWnd);
 
 static BYTE GetEffectiveWindowAlpha(void)
 {
@@ -325,6 +326,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    ShowSysTray(hWnd, _header->show_systray);
    ShowInTaskbar(hWnd, !_header->hide_taskbar);
+   SetMouseLeaveHide(hWnd);
 
    if (_WndInfo.status != ds_normal)
    {
@@ -771,21 +773,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     OnHideWin(hWnd, message, wParam, lParam);
             }
         }
-        else if ('P' == wParam)
-        {
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000
-                && GetAsyncKeyState(VK_SHIFT) & 0x8000
-                && GetAsyncKeyState(18) & 0x8000) // alt
-            {
-                if (!_hMouseHook)
-                    _hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, hInst, NULL);
-                else
-                {
-                    UnhookWindowsHookEx(_hMouseHook);
-                    _hMouseHook = NULL;
-                }
-            }
-        }
 #ifdef ENABLE_NETWORK
         else if (VK_F5 == wParam) // online book manual check
         {
@@ -927,9 +914,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         return DefWindowProc(hWnd, message, wParam, lParam);
     case WM_MOUSEWHEEL:
         {
-            const BYTE MIN_ALPHA = 0x01;
-            const BYTE MAX_ALPHA = 0xff;
-            const BYTE UNIT_STEP = 0x05;
             if (IsWindowVisible(_hTreeView))
             {
                 SetFocus(_hTreeView);
@@ -942,71 +926,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             if (GET_WHEEL_DELTA_WPARAM(wParam) > 0)
             {
-                if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-                {
-                    if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
-                    {
-                        _header->alpha = MAX_ALPHA;
-                    }
-                    else
-                    {
-                        if (_header->alpha < MAX_ALPHA - UNIT_STEP)
-                            _header->alpha += UNIT_STEP;
-                        else
-                            _header->alpha = MAX_ALPHA;
-                    }
-                    if (_WndInfo.bLayered)
-                        OnDraw(hWnd);
-                    else
-                        ApplyWindowTransparency(hWnd);
-                }
-                else if (GetAsyncKeyState(18) & 0x8000) // alt
-                {
-                    if (_textAlpha < MAX_ALPHA - UNIT_STEP)
-                        _textAlpha += UNIT_STEP;
-                    else
-                        _textAlpha = MAX_ALPHA;
-                    if (_WndInfo.bLayered)
-                        OnDraw(hWnd);
-                }
-                else
-                {
-                    OnLineUp(hWnd, message, wParam, lParam);
-                }
+                OnLineUp(hWnd, message, wParam, lParam);
             }
             else
             {
-                if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-                {
-                    if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
-                    {
-                        _header->alpha = MIN_ALPHA;
-                    }
-                    else
-                    {
-                        if (_header->alpha > MIN_ALPHA + UNIT_STEP)
-                            _header->alpha -= UNIT_STEP;
-                        else
-                            _header->alpha = MIN_ALPHA;
-                    }
-                    if (_WndInfo.bLayered)
-                        OnDraw(hWnd);
-                    else
-                        ApplyWindowTransparency(hWnd);
-                }
-                else if (GetAsyncKeyState(18) & 0x8000) // alt
-                {
-                    if (_textAlpha > 0x1f + UNIT_STEP)
-                        _textAlpha -= UNIT_STEP;
-                    else
-                        _textAlpha = 0x1f;
-                    if (_WndInfo.bLayered)
-                        OnDraw(hWnd);
-                }
-                else
-                {
-                    OnLineDown(hWnd, message, wParam, lParam);
-                }
+                OnLineDown(hWnd, message, wParam, lParam);
             }
         }
         break;
@@ -2123,6 +2047,7 @@ LRESULT OnRestoreDefault(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     SetGlobalKey(hWnd);
     ShowSysTray(hWnd, _header->show_systray);
     ShowInTaskbar(hWnd, !_header->hide_taskbar);
+    SetMouseLeaveHide(hWnd);
 
     SetWindowPlacement(hWnd, &_header->placement);
 
@@ -3133,21 +3058,6 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
                     if (_WndInfo.status == ds_fullscreen)
                     {
                         OnFullScreen(_hWnd, WM_KEYDOWN, pData->vkCode, lParam);
-                    }
-                }
-                else if ('P' == pData->vkCode)
-                {
-                    if (GetAsyncKeyState(VK_CONTROL) & 0x8000
-                        && GetAsyncKeyState(VK_SHIFT) & 0x8000
-                        && GetAsyncKeyState(18) & 0x8000) // alt
-                    {
-                        if (!_hMouseHook)
-                            _hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, hInst, NULL);
-                        else
-                        {
-                            UnhookWindowsHookEx(_hMouseHook);
-                            _hMouseHook = NULL;
-                        }
                     }
                 }
 #ifdef ENABLE_NETWORK
@@ -4469,6 +4379,23 @@ void SetGlobalKey(HWND hWnd)
         }
     }
 #endif
+}
+
+void SetMouseLeaveHide(HWND hWnd)
+{
+    if (!_header)
+        return;
+
+    if (_header->mouse_leave_hide)
+    {
+        if (!_hMouseHook)
+            _hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, hInst, NULL);
+    }
+    else if (_hMouseHook)
+    {
+        UnhookWindowsHookEx(_hMouseHook);
+        _hMouseHook = NULL;
+    }
 }
 
 HHOOK hMsgBoxHook = NULL;
