@@ -2737,9 +2737,17 @@ LRESULT OnWereadRefresh(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-BOOL DispatchWereadRefreshShortcut(HWND hWnd, WPARAM key)
+BOOL DispatchWereadHostShortcut(HWND hWnd, WPARAM key)
 {
+    if (KS_KeyDownProcById(KI_BORDER, hWnd, WM_KEYDOWN, key, 0))
+        return TRUE;
+
     return KS_KeyDownProcById(KI_WEREAD_REFRESH, hWnd, WM_KEYDOWN, key, 0);
+}
+
+BOOL IsWereadDragStripEnabled(HWND hWnd)
+{
+    return IsWindow(hWnd) && _WndInfo.status == ds_borderless;
 }
 
 LRESULT OnDropFiles(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)

@@ -14,14 +14,73 @@ using Microsoft::WRL::ComPtr;
 #pragma comment(lib, "version.lib")
 #pragma comment(lib, "WebView2LoaderStatic.lib")
 
-extern BOOL DispatchWereadRefreshShortcut(HWND hParent, WPARAM key);
+extern BOOL DispatchWereadHostShortcut(HWND hParent, WPARAM key);
+extern BOOL IsWereadDragStripEnabled(HWND hParent);
 
 namespace
 {
 const wchar_t kWereadUrl[] = L"https://weread.qq.com/";
+const wchar_t kDragStripClass[] = L"RishWereadDragStrip";
+const int kDragStripHeight = 12;
 
 class EmbeddedWereadView;
 EmbeddedWereadView* GetView(HWND hParent, bool create);
+
+void BeginParentDrag(HWND hWnd)
+{
+    POINT pt;
+    HWND hParent = GetParent(hWnd);
+    if (!hParent)
+        return;
+
+    GetCursorPos(&pt);
+    ReleaseCapture();
+    SendMessage(hParent, WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(pt.x, pt.y));
+}
+
+LRESULT CALLBACK DragStripProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_NCHITTEST:
+        return HTCAPTION;
+    case WM_SETCURSOR:
+        SetCursor(LoadCursor(NULL, IDC_SIZEALL));
+        return TRUE;
+    case WM_LBUTTONDOWN:
+    case WM_NCLBUTTONDOWN:
+        BeginParentDrag(hWnd);
+        return 0;
+    case WM_ERASEBKGND:
+        return TRUE;
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps;
+        BeginPaint(hWnd, &ps);
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    default:
+        break;
+    }
+
+    return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+void RegisterDragStripClass()
+{
+    static ATOM atom = 0;
+    if (atom)
+        return;
+
+    WNDCLASSEXW wcex = {0};
+    wcex.cbSize = sizeof(wcex);
+    wcex.lpfnWndProc = DragStripProc;
+    wcex.hInstance = GetModuleHandle(NULL);
+    wcex.hCursor = LoadCursor(NULL, IDC_SIZEALL);
+    wcex.lpszClassName = kDragStripClass;
+    atom = RegisterClassExW(&wcex);
+}
 
 class EmbeddedWereadView
 {
@@ -61,6 +120,7 @@ public:
             m_controller->put_IsVisible(TRUE);
             Resize(NULL);
             m_controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+            UpdateDragStrip();
         }
     }
 
@@ -69,10 +129,12 @@ public:
         m_visible = FALSE;
         if (m_controller)
             m_controller->put_IsVisible(FALSE);
+        UpdateDragStrip();
     }
 
     void Close()
     {
+        DestroyDragStrip();
         m_webView.Reset();
         if (m_controller)
         {
@@ -103,6 +165,8 @@ public:
 
         if (m_controller && m_hasBounds)
             m_controller->put_Bounds(m_bounds);
+
+        UpdateDragStrip();
     }
 
     void Reload()
@@ -171,6 +235,7 @@ private:
                                 self->RegisterAcceleratorKeyHandler();
                                 self->Resize(NULL);
                                 self->m_controller->put_IsVisible(self->m_visible);
+                                self->UpdateDragStrip();
 
                                 if (self->m_webView)
                                     self->m_webView->Navigate(kWereadUrl);
@@ -216,7 +281,7 @@ private:
                     }
 
                     args->get_VirtualKey(&key);
-                    if (DispatchWereadRefreshShortcut(hParent, key))
+                    if (DispatchWereadHostShortcut(hParent, key))
                     {
                         args->put_Handled(TRUE);
                     }
@@ -251,8 +316,80 @@ private:
             MB_OK | MB_ICONERROR);
     }
 
+    bool ShouldShowDragStrip() const
+    {
+        LONG_PTR style;
+
+        if (!m_visible || !m_controller || !m_hasBounds || !IsWindow(m_hParent))
+            return false;
+
+        style = GetWindowLongPtr(m_hParent, GWL_STYLE);
+        return (style & WS_CAPTION) == 0 && IsWereadDragStripEnabled(m_hParent);
+    }
+
+    void EnsureDragStrip()
+    {
+        if (m_hDragStrip && IsWindow(m_hDragStrip))
+            return;
+
+        RegisterDragStripClass();
+        m_hDragStrip = CreateWindowExW(
+            WS_EX_LAYERED,
+            kDragStripClass,
+            NULL,
+            WS_CHILD,
+            0,
+            0,
+            0,
+            0,
+            m_hParent,
+            NULL,
+            GetModuleHandle(NULL),
+            NULL);
+
+        if (m_hDragStrip)
+            SetLayeredWindowAttributes(m_hDragStrip, 0, 1, LWA_ALPHA);
+    }
+
+    void DestroyDragStrip()
+    {
+        if (m_hDragStrip && IsWindow(m_hDragStrip))
+            DestroyWindow(m_hDragStrip);
+        m_hDragStrip = NULL;
+    }
+
+    void UpdateDragStrip()
+    {
+        if (!ShouldShowDragStrip())
+        {
+            if (m_hDragStrip && IsWindow(m_hDragStrip))
+                ShowWindow(m_hDragStrip, SW_HIDE);
+            return;
+        }
+
+        EnsureDragStrip();
+        if (!m_hDragStrip)
+            return;
+
+        int width = m_bounds.right - m_bounds.left;
+        int height = m_bounds.bottom - m_bounds.top;
+        if (width <= 0 || height <= 0)
+            return;
+
+        height = height < kDragStripHeight ? height : kDragStripHeight;
+        SetWindowPos(
+            m_hDragStrip,
+            HWND_TOP,
+            m_bounds.left,
+            m_bounds.top,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
 private:
     HWND m_hParent = NULL;
+    HWND m_hDragStrip = NULL;
     BOOL m_visible = FALSE;
     bool m_creating = false;
     bool m_comInitialized = false;
