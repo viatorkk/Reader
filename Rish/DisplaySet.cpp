@@ -27,6 +27,8 @@ typedef struct display_set_data_t
     int blank_lines;
     int chapter_page;
     int mouse_leave_hide;
+    int hide_taskbar;
+    int show_systray;
     int is_save;
 } display_set_data_t;
 
@@ -48,6 +50,8 @@ extern void Save(HWND hWnd);
 extern VOID Invalidate(HWND hWnd, BOOL bOnlyClient, BOOL bErase);
 extern void SetTreeviewFont();
 extern void SetMouseLeaveHide(HWND hWnd);
+extern void ShowInTaskbar(HWND hWnd, BOOL bShow);
+extern void ShowSysTray(HWND hWnd, BOOL bShow);
 
 static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 static void _init_font_set(HWND hDlg);
@@ -121,7 +125,9 @@ static BYTE _percent_to_alpha(int percent)
     (d)->line_indent = (s)->line_indent; \
     (d)->blank_lines = (s)->blank_lines; \
     (d)->chapter_page = (s)->chapter_page; \
-    (d)->mouse_leave_hide = (s)->mouse_leave_hide;
+    (d)->mouse_leave_hide = (s)->mouse_leave_hide; \
+    (d)->hide_taskbar = (s)->hide_taskbar; \
+    (d)->show_systray = (s)->show_systray;
 
 void OpenDisplaySetDlg(void)
 {
@@ -161,6 +167,8 @@ void OpenDisplaySetDlg(void)
         COPY_DISPLAY_PARAMS(&_display, _header);
 
         SetMouseLeaveHide(_hWnd);
+        ShowInTaskbar(_hWnd, !_header->hide_taskbar);
+        ShowSysTray(_hWnd, _header->show_systray);
         Save(_hWnd);
         Invalidate(_hWnd, TRUE, FALSE);
 
@@ -199,6 +207,8 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
                 return (INT_PTR)FALSE;
             if (!_valid_layout_set(hDlg))
                 return (INT_PTR)FALSE;
+            if (_display.hide_taskbar)
+                _display.show_systray = 1;
             _display.is_save = 1;
             EndDialog(hDlg, LOWORD(wParam));
             return (INT_PTR)TRUE;
@@ -270,6 +280,12 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
         case IDC_CHECK_MOUSE_LEAVE_HIDE:
             res = (int)SendMessage(GetDlgItem(hDlg, IDC_CHECK_MOUSE_LEAVE_HIDE), BM_GETCHECK, 0, NULL);
             _display.mouse_leave_hide = BST_CHECKED == res ? 1 : 0;
+            break;
+        case IDC_CHECK_TASKBAR:
+            res = (int)SendMessage(GetDlgItem(hDlg, IDC_CHECK_TASKBAR), BM_GETCHECK, 0, NULL);
+            _display.hide_taskbar = BST_CHECKED == res ? 1 : 0;
+            if (_display.hide_taskbar)
+                _display.show_systray = 1;
             break;
 
 
@@ -363,6 +379,7 @@ static void _init_layout_set(HWND hDlg)
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_BLANKLINES), BM_SETCHECK, _display.blank_lines ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_CHAPTER_PAGE), BM_SETCHECK, _display.chapter_page ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_MOUSE_LEAVE_HIDE), BM_SETCHECK, _display.mouse_leave_hide ? BST_CHECKED : BST_UNCHECKED, NULL);
+    SendMessage(GetDlgItem(hDlg, IDC_CHECK_TASKBAR), BM_SETCHECK, _display.hide_taskbar ? BST_CHECKED : BST_UNCHECKED, NULL);
 }
 
 static void _enable_font_set(HWND hDlg, BOOL enable)

@@ -368,7 +368,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     if (WM_TASKBAR_CREATED == message)
     {
-        ShowSysTray(hWnd, TRUE);
+        ShowSysTray(hWnd, _header->show_systray);
     }
     switch (message)
     {
@@ -654,18 +654,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_CLOSE:
         StopAutoPage(hWnd);
-        if (_header->show_systray)
-        {
-            _tcscpy(_nid.szInfoTitle, szTitle);
-            _tcscpy(_nid.szInfo, _T("I'm here!"));
-            _nid.uTimeout = 1000;
-            Shell_NotifyIcon(NIM_MODIFY, &_nid);
-            ShowHideWindow(hWnd);
-        }
-        else
-        {
-            return DefWindowProc(hWnd, message, wParam, lParam);
-        }
+        DestroyWindow(hWnd);
         break;
     case WM_DESTROY:
         CloseWereadWebView(hWnd);
@@ -740,6 +729,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
     case WM_SIZE:
+        if (wParam == SIZE_MINIMIZED && _header->show_systray)
+        {
+            StopAutoPage(hWnd);
+            ShowSysTray(hWnd, TRUE);
+            ShowWindow(hWnd, SW_HIDE);
+            break;
+        }
         if (!IsIconic(hWnd))
         {
             OnSize(hWnd, message, wParam, lParam);
@@ -851,7 +847,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             switch (wParam)
             {
             case HTMINBUTTON:
-                //PostMessage(hWnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+                PostMessage(hWnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
                 return FALSE;
             case HTMAXBUTTON:
                 //PostMessage(hWnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
