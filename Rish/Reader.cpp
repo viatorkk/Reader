@@ -61,7 +61,14 @@ static void _update_data(HWND hWnd, BOOL keep_header, BOOL do_save);
 static BYTE GetEffectiveWindowAlpha(void);
 static BOOL EnsureLayeredWindow(HWND hWnd);
 static void ApplyWindowTransparency(HWND hWnd);
+static void UpdateOnlineStoreViewState(HWND hWnd);
+static BOOL IsOnlineStoreTransparentBackdropVisible(HWND hWnd);
+static void PaintOnlineStoreBackdrop(HWND hWnd, HDC hdc);
 void SetMouseLeaveHide(HWND hWnd);
+
+static const UINT WM_RISH_UPDATE_MENU = WM_APP + 1;
+static const UINT WM_RISH_ADD_ONLINE_STORE = WM_APP + 2;
+static const UINT WM_RISH_DELETE_ONLINE_STORE = WM_APP + 3;
 
 static BYTE GetEffectiveWindowAlpha(void)
 {
@@ -89,6 +96,50 @@ static void ApplyWindowTransparency(HWND hWnd)
 
     if (!SetLayeredWindowAttributes(hWnd, 0, GetEffectiveWindowAlpha(), LWA_ALPHA))
         SetLayeredWindowAttributes(hWnd, 0, 0xFF, LWA_ALPHA);
+}
+
+static BOOL IsOnlineStoreTransparentBackdropVisible(HWND hWnd)
+{
+    return _header && _header->webview_transparent_bg && IsWereadWebViewVisible(hWnd);
+}
+
+static void PaintOnlineStoreBackdrop(HWND hWnd, HDC hdc)
+{
+    RECT rc;
+    HBRUSH hBrush;
+    COLORREF color = _header ? _header->bg_color : GetSysColor(COLOR_WINDOW);
+
+    GetClientRectExceptStatusBar(hWnd, &rc);
+    hBrush = CreateSolidBrush(color);
+    if (hBrush)
+    {
+        FillRect(hdc, &rc, hBrush);
+        DeleteObject(hBrush);
+    }
+}
+
+static void UpdateOnlineStoreViewState(HWND hWnd)
+{
+    RECT rc;
+
+    ApplyWindowTransparency(hWnd);
+    if (IsWereadWebViewVisible(hWnd))
+    {
+        ShowWindow(_hTreeView, SW_HIDE);
+        ShowWindow(_hTreeMark, SW_HIDE);
+        GetClientRectExceptStatusBar(hWnd, &rc);
+        ResizeWereadWebView(hWnd, &rc);
+        if (_header && _header->webview_transparent_bg)
+        {
+            Invalidate(hWnd, TRUE, TRUE);
+            UpdateWindow(hWnd);
+        }
+    }
+    else
+    {
+        Invalidate(hWnd, TRUE, FALSE);
+    }
+    OnUpdateMenu(hWnd);
 }
 
 int APIENTRY _tWinMain(HINSTANCE hInstance,
@@ -352,6 +403,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     int wmId, wmEvent;
+    int menuAction;
     PAINTSTRUCT ps;
     HDC hdc;
     LRESULT hit;
@@ -372,6 +424,41 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     switch (message)
     {
+    case WM_RISH_UPDATE_MENU:
+        OnUpdateMenu(hWnd);
+        return 0;
+    case WM_RISH_ADD_ONLINE_STORE:
+        if (AddOnlineStoreUrl(hWnd))
+            OnUpdateMenu(hWnd);
+        return 0;
+    case WM_RISH_DELETE_ONLINE_STORE:
+        if (DeleteCustomOnlineStoreUrl(hWnd, (int)wParam))
+            OnUpdateMenu(hWnd);
+        return 0;
+    case WM_MENUCOMMAND:
+        PauseAutoPage(hWnd);
+        menuAction = HandleOnlineStoreMenuCommand(hWnd, (HMENU)lParam, (UINT)wParam);
+        if (menuAction != ONLINE_STORE_MENU_NONE)
+        {
+            if (menuAction == ONLINE_STORE_MENU_WEBVIEW)
+                UpdateOnlineStoreViewState(hWnd);
+            else if (menuAction == ONLINE_STORE_MENU_CHANGED)
+                PostMessage(hWnd, WM_RISH_UPDATE_MENU, 0, 0);
+            else if (menuAction == ONLINE_STORE_MENU_ADD_REQUEST)
+                PostMessage(hWnd, WM_RISH_ADD_ONLINE_STORE, 0, 0);
+            ResumeAutoPage(hWnd);
+            break;
+        }
+        ResumeAutoPage(hWnd);
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    case WM_MEASUREITEM:
+        if (MeasureOnlineStoreMenuItem(hWnd, (MEASUREITEMSTRUCT*)lParam))
+            return TRUE;
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    case WM_DRAWITEM:
+        if (DrawOnlineStoreMenuItem(hWnd, (DRAWITEMSTRUCT*)lParam))
+            return TRUE;
+        return DefWindowProc(hWnd, message, wParam, lParam);
     case WM_COMMAND:
         PauseAutoPage(hWnd);
         wmId    = LOWORD(wParam);
@@ -380,6 +467,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             int item_id = wmId - IDM_OPEN_BEGIN;
             OnOpenItem(hWnd, item_id, FALSE);
+            ResumeAutoPage(hWnd);
+            break;
+        }
+        if (wmId >= IDM_ONLINE_STORE_FIRST && wmId < IDM_ONLINE_STORE_FIRST + MAX_ONLINE_STORE_COUNT)
+        {
+            int index = wmId - IDM_ONLINE_STORE_FIRST;
+            if (OpenCustomOnlineStoreWebView(hWnd, index))
+            {
+                UpdateOnlineStoreViewState(hWnd);
+            }
+            ResumeAutoPage(hWnd);
+            break;
+        }
+        if (wmId >= IDM_ONLINE_STORE_DELETE_FIRST && wmId < IDM_ONLINE_STORE_DELETE_FIRST + MAX_ONLINE_STORE_COUNT)
+        {
+            PostMessage(hWnd, WM_RISH_DELETE_ONLINE_STORE, (WPARAM)(wmId - IDM_ONLINE_STORE_DELETE_FIRST), 0);
             ResumeAutoPage(hWnd);
             break;
         }
@@ -430,19 +533,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 #endif
         case IDM_WEREAD:
             OpenWereadWebView(hWnd);
-            ApplyWindowTransparency(hWnd);
-            if (IsWereadWebViewVisible(hWnd))
-            {
-                ShowWindow(_hTreeView, SW_HIDE);
-                ShowWindow(_hTreeMark, SW_HIDE);
-                GetClientRectExceptStatusBar(hWnd, &rc);
-                ResizeWereadWebView(hWnd, &rc);
-            }
-            else
-            {
-                Invalidate(hWnd, TRUE, FALSE);
-            }
-            OnUpdateMenu(hWnd);
+            UpdateOnlineStoreViewState(hWnd);
+            break;
+        case IDM_ONLINE_STORE_ADD:
+            PostMessage(hWnd, WM_RISH_ADD_ONLINE_STORE, 0, 0);
             break;
         case IDM_DEFAULT:
             OnRestoreDefault(hWnd, message, wParam, lParam);
@@ -611,6 +705,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_MENURBUTTONUP:
         wmId = GetMenuItemID((HMENU)lParam, (int)wParam);
+        if (wmId >= IDM_ONLINE_STORE_FIRST && wmId < IDM_ONLINE_STORE_FIRST + MAX_ONLINE_STORE_COUNT)
+        {
+            EndMenu();
+            PostMessage(hWnd, WM_RISH_DELETE_ONLINE_STORE, (WPARAM)(wmId - IDM_ONLINE_STORE_FIRST), 0);
+            break;
+        }
         if (wmId >= IDM_OPEN_BEGIN && wmId <= IDM_OPEN_END)
         {
             int item_id = wmId - IDM_OPEN_BEGIN;
@@ -648,8 +748,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_PAINT:
         hdc = BeginPaint(hWnd, &ps);
         // TODO: Add any drawing code here...
-        if (!_WndInfo.bLayered && !IsWereadWebViewVisible(hWnd))
-            OnPaint(hWnd, hdc);
+        if (!_WndInfo.bLayered)
+        {
+            if (IsOnlineStoreTransparentBackdropVisible(hWnd))
+                PaintOnlineStoreBackdrop(hWnd, hdc);
+            else if (!IsWereadWebViewVisible(hWnd))
+                OnPaint(hWnd, hdc);
+        }
         EndPaint(hWnd, &ps);
         break;
     case WM_CLOSE:
@@ -1913,7 +2018,7 @@ LRESULT OnUpdateMenu(HWND hWnd)
     hFile = CreateMenu();
     LoadString(hInst, IDS_MENU_OPEN, buf, MAX_LOADSTRING);
     AppendMenu(hFile, MF_STRING, IDM_OPEN, buf);
-    AppendWereadMenuItems(hFile, hWnd);
+    AppendOnlineBookStoreMenuItems(hFile, hWnd);
     AppendMenu(hFile, MF_SEPARATOR, 0, NULL);
     for (int i=0; i<_header->item_count; i++)
     {
@@ -1937,6 +2042,7 @@ LRESULT OnUpdateMenu(HWND hWnd)
     LoadString(hInst, IDS_MENU_FILE, buf, MAX_LOADSTRING);
     InsertMenu(hMenuBar, 0, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR)hFile, buf);
     DrawMenuBar(hWnd);
+    RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
 
     return 0;
 }
@@ -2181,7 +2287,7 @@ VOID OnDraw(HWND hWnd)
     memdc = CreateCompatibleDC(hdc_screen);
 
     // draw text to dc, DrawPage() will create bitmap
-    if (_Book && !_Book->IsLoading())
+    if (_Book && !_Book->IsLoading() && !IsOnlineStoreTransparentBackdropVisible(hWnd))
     {
         hdc_text = CreateCompatibleDC(hdc_screen);
         _Book->DrawPage(hWnd, hdc_text, &rc, TRUE, &alpha_dc);

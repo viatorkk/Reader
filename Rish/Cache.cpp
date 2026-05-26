@@ -462,6 +462,7 @@ void Cache::default_header(header_t* header)
     header->bg_color = 0x00ffffff;  // White
     header->alpha = 0xff;
     header->opaque_text_transparent_bg = 0;
+    header->webview_transparent_bg = 0;
 
     header->char_gap = 0;
     header->line_gap = 5;
@@ -496,6 +497,7 @@ void Cache::default_header(header_t* header)
     header->chapter_rule.rule = 0;
 
     header->meun_font_follow = 0;
+    header->online_store_count = 0;
 
     for (i = 0; i<MAX_CUST_COLOR_COUNT; i++)
     {

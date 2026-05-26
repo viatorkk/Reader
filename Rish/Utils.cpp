@@ -176,7 +176,7 @@ type_t check_bom(const char *data, size_t size)
         if (memcmp(data, UTF_16_BE_BOM, 2) == 0)
             return utf16_be;
     }
-    return Unknown;
+    return encoding_unknown;
 }
 
 int is_ascii(const char *data, size_t size)

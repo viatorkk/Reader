@@ -31,6 +31,9 @@
 #define MAX_MARK_COUNT              256
 #define MAX_TAG_COUNT               256
 #define MAX_BOOKSRC_COUNT           64
+#define MAX_ONLINE_STORE_COUNT      16
+#define MAX_ONLINE_STORE_NAME       128
+#define MAX_ONLINE_STORE_URL        1024
 #define MAX_CUST_COLOR_COUNT        16
 #define MAX_KEYSET_COUNT            32
 
@@ -184,6 +187,12 @@ typedef struct keyset_t
     int   is_disable;
 } keyset_t;
 
+typedef struct online_store_t
+{
+    TCHAR name[MAX_ONLINE_STORE_NAME];
+    TCHAR url[MAX_ONLINE_STORE_URL];
+} online_store_t;
+
 typedef struct header_t
 {
     TCHAR version[16];
@@ -204,6 +213,7 @@ typedef struct header_t
     u32 bg_color;
     BYTE alpha;
     int opaque_text_transparent_bg;
+    int webview_transparent_bg;
     int char_gap;
     int line_gap;
     int paragraph_gap;
@@ -235,6 +245,8 @@ typedef struct header_t
     tagitem_t tags[MAX_TAG_COUNT];
 #endif
     int meun_font_follow;
+    int online_store_count;
+    online_store_t online_stores[MAX_ONLINE_STORE_COUNT];
     int book_source_count;
     book_source_t book_sources[MAX_BOOKSRC_COUNT];
 } header_t;
@@ -247,7 +259,7 @@ typedef struct body_t
 
 typedef enum type_t
 {
-    Unknown = 0,
+    encoding_unknown = 0,
     utf8,
     utf16_le,
     utf16_be,

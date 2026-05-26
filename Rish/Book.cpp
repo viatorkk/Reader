@@ -197,9 +197,9 @@ BOOL Book::GetChapterTitle(TCHAR* title, int size)
 
 BOOL Book::DecodeText(const char *src, int srcsize, wchar_t **dst, int *dstsize)
 {
-    type_t bom = Unknown;
+    type_t bom = encoding_unknown;
 
-    if (Unknown != (bom = check_bom(src, srcsize)))
+    if (encoding_unknown != (bom = check_bom(src, srcsize)))
     {
         if (utf8 == bom)
         {

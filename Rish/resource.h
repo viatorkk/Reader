@@ -72,6 +72,7 @@
 #define IDB_BITMAP_PICKER               148
 #define IDS_TOPMOST                     149
 #define IDC_CURSOR_PICKER               149
+#define IDD_ONLINE_STORE_ADD            150
 #define IDS_OPEN_FILE                   150
 #define IDS_ADD_BOOKMARK                151
 #define IDS_AUTO_PAGE                   152
@@ -287,6 +288,9 @@
 #define IDC_EDIT_ALPHA                  1172
 #define IDC_CHECK_TEXT_OPAQUE_BG_TRANSPARENT 1173
 #define IDC_CHECK_MOUSE_LEAVE_HIDE      1174
+#define IDC_EDIT_ONLINE_STORE_URL       1175
+#define IDC_EDIT_ONLINE_STORE_NAME      1176
+#define IDC_CHECK_WEBVIEW_TRANSPARENT_BG 1177
 #define IDM_OPEN                        32771
 #define IDM_DISPLAY                     32772
 #define IDM_DEFAULT                     32781
@@ -300,6 +304,9 @@
 #define IDM_TAGSET                      32803
 #define IDM_ONLINE                      32804
 #define IDM_WEREAD                      32805
+#define IDM_ONLINE_STORE_ADD            32806
+#define IDM_ONLINE_STORE_FIRST          32900
+#define IDM_ONLINE_STORE_DELETE_FIRST   33000
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -307,9 +314,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        150
-#define _APS_NEXT_COMMAND_VALUE         32806
-#define _APS_NEXT_CONTROL_VALUE         1175
+#define _APS_NEXT_RESOURCE_VALUE        151
+#define _APS_NEXT_COMMAND_VALUE         32807
+#define _APS_NEXT_CONTROL_VALUE         1178
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

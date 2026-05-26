@@ -588,6 +588,7 @@ class json_header_t
     cJSON* bg_color;
     cJSON* alpha;
     cJSON* opaque_text_transparent_bg;
+    cJSON* webview_transparent_bg;
     cJSON* meun_font_follow;
     cJSON* wheel_speed;
     cJSON* page_mode;
@@ -620,12 +621,14 @@ class json_header_t
     cJSON* tag_count;
     json_tagitem_t* tags[MAX_TAG_COUNT];
 #endif
+    cJSON* online_store_count;
+    cJSON* online_stores;
     cJSON* book_source_count;
     json_book_source_t* book_sources[MAX_BOOKSRC_COUNT];
 public:
     json_header_t(cJSON* parent, header_t* data)
     {
-        int i, n;
+        int i, n, count;
         cJSON* item;
         cJSON* array;
 
@@ -646,6 +649,7 @@ public:
         bg_color = cJSON_AddULongToObject(parent, "bg_color", data->bg_color);
         alpha = cJSON_AddNumberToObject(parent, "alpha", data->alpha);
         opaque_text_transparent_bg = cJSON_AddNumberToObject(parent, "opaque_text_transparent_bg", data->opaque_text_transparent_bg);
+        webview_transparent_bg = cJSON_AddNumberToObject(parent, "webview_transparent_bg", data->webview_transparent_bg);
         meun_font_follow = cJSON_AddNumberToObject(parent, "meun_font_follow", data->meun_font_follow);
         wheel_speed = cJSON_AddNumberToObject(parent, "wheel_speed", data->wheel_speed);
         page_mode = cJSON_AddNumberToObject(parent, "page_mode", data->page_mode);
@@ -729,6 +733,21 @@ public:
             cJSON_AddItemToArray(array, item);
         }
 #endif
+        count = data->online_store_count;
+        if (count < 0)
+            count = 0;
+        if (count > MAX_ONLINE_STORE_COUNT)
+            count = MAX_ONLINE_STORE_COUNT;
+        online_store_count = cJSON_AddNumberToObject(parent, "online_store_count", count);
+        online_stores = cJSON_AddArrayToObject(parent, "online_stores");
+        for (i = 0; i < count; i++)
+        {
+            item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "name", Utf16ToUtf8(data->online_stores[i].name));
+            cJSON_AddStringToObject(item, "url", Utf16ToUtf8(data->online_stores[i].url));
+            cJSON_AddItemToArray(online_stores, item);
+        }
+
         memset(book_sources, 0, sizeof(json_book_source_t*) * MAX_BOOKSRC_COUNT);
         book_source_count = cJSON_AddNumberToObject(parent, "book_source_count", data->book_source_count);
         array = cJSON_AddArrayToObject(parent, "book_sources");
@@ -771,6 +790,7 @@ public:
         bg_color = cJSON_GetObjectItem(parent, "bg_color");
         alpha = cJSON_GetObjectItem(parent, "alpha");
         opaque_text_transparent_bg = cJSON_GetObjectItem(parent, "opaque_text_transparent_bg");
+        webview_transparent_bg = cJSON_GetObjectItem(parent, "webview_transparent_bg");
         meun_font_follow = cJSON_GetObjectItem(parent, "meun_font_follow");
         wheel_speed = cJSON_GetObjectItem(parent, "wheel_speed");
         page_mode = cJSON_GetObjectItem(parent, "page_mode");
@@ -790,6 +810,8 @@ public:
 
         global_key = cJSON_GetObjectItem(parent, "global_key");
         cust_colors = cJSON_GetObjectItem(parent, "cust_colors");
+        online_store_count = cJSON_GetObjectItem(parent, "online_store_count");
+        online_stores = cJSON_GetObjectItem(parent, "online_stores");
 
         memset(keyset, 0, sizeof(json_keyset_t*) * KI_MAXCOUNT);
         array = cJSON_GetObjectItem(parent, "keyset");
@@ -957,6 +979,8 @@ public:
         }
         if (opaque_text_transparent_bg && cJSON_IsNumber(opaque_text_transparent_bg))
             data->opaque_text_transparent_bg = opaque_text_transparent_bg->valueint ? 1 : 0;
+        if (webview_transparent_bg && cJSON_IsNumber(webview_transparent_bg))
+            data->webview_transparent_bg = webview_transparent_bg->valueint ? 1 : 0;
         if (meun_font_follow)
             data->meun_font_follow = meun_font_follow->valueint;
         if (wheel_speed)
@@ -1040,6 +1064,42 @@ public:
                 tags[i]->GetData(&(data->tags[i]));
         }
 #endif
+        if (online_stores)
+        {
+            size = cJSON_GetArraySize(online_stores);
+            if (size > MAX_ONLINE_STORE_COUNT)
+                size = MAX_ONLINE_STORE_COUNT;
+            data->online_store_count = size;
+            for (i = 0; i < size; i++)
+            {
+                item = cJSON_GetArrayItem(online_stores, i);
+                if (item && cJSON_IsString(item) && item->valuestring)
+                {
+                    _tcsncpy_s(data->online_stores[i].url, MAX_ONLINE_STORE_URL, Utf8ToUtf16(item->valuestring), _TRUNCATE);
+                    _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, data->online_stores[i].url, _TRUNCATE);
+                }
+                else if (item && cJSON_IsObject(item))
+                {
+                    cJSON* name = cJSON_GetObjectItem(item, "name");
+                    cJSON* url = cJSON_GetObjectItem(item, "url");
+                    if (url && url->valuestring)
+                        _tcsncpy_s(data->online_stores[i].url, MAX_ONLINE_STORE_URL, Utf8ToUtf16(url->valuestring), _TRUNCATE);
+                    if (name && name->valuestring)
+                        _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, Utf8ToUtf16(name->valuestring), _TRUNCATE);
+                    if (!data->online_stores[i].name[0])
+                        _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, data->online_stores[i].url, _TRUNCATE);
+                }
+            }
+        }
+        else if (online_store_count)
+        {
+            data->online_store_count = online_store_count->valueint;
+            if (data->online_store_count < 0)
+                data->online_store_count = 0;
+            if (data->online_store_count > MAX_ONLINE_STORE_COUNT)
+                data->online_store_count = MAX_ONLINE_STORE_COUNT;
+        }
+
         if (book_source_count)
             data->book_source_count = book_source_count->valueint;
         for (i = 0; i < data->book_source_count; i++)
