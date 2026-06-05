@@ -12,6 +12,7 @@ void UpdateWereadWebViewBackground(HWND hParent);
 BOOL IsWereadWebViewVisible(HWND hParent);
 void AppendOnlineBookStoreMenuItems(HMENU hMenu, HWND hParent);
 void OpenOnlineStoreWebView(HWND hParent, const wchar_t* url);
+BOOL RestoreLastOnlineStoreWebView(HWND hParent);
 BOOL OpenCustomOnlineStoreWebView(HWND hParent, int index);
 BOOL AddOnlineStoreUrl(HWND hParent);
 BOOL DeleteCustomOnlineStoreUrl(HWND hParent, int index);

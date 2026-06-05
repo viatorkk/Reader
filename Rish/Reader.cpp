@@ -1961,6 +1961,8 @@ LRESULT OnCreate(HWND hWnd)
             item_t* item = _Cache.get_item(0);
             OnOpenBook(hWnd, item->file_name, FALSE);
         }
+        if (RestoreLastOnlineStoreWebView(hWnd))
+            UpdateOnlineStoreViewState(hWnd);
     }
 
     // check upgrade

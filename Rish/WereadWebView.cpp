@@ -28,6 +28,7 @@ const wchar_t kWereadUrl[] = L"https://weread.qq.com/";
 const wchar_t kDragStripClass[] = L"RishWereadDragStrip";
 const int kDragStripHeight = 12;
 const wchar_t kOnlineBookStoreTitle[] = L"\u5728\u7ebf\u4e66\u57ce";
+const wchar_t kWebViewStateFileName[] = L".webview.dat";
 const wchar_t kWereadMenuTitle[] = L"\u5fae\u4fe1\u9605\u8bfb(&W)";
 const wchar_t kAddUrlMenuTitle[] = L"\u6dfb\u52a0\u7f51\u5740...";
 const wchar_t kDeleteIcon[] = L"\u00d7";
@@ -52,6 +53,30 @@ const wchar_t kRemoveTransparentBackgroundScript[] = LR"JS(
     }
 })();
 )JS";
+const wchar_t kHideScrollbarsScript[] = LR"JS(
+(() => {
+    const id = 'rish-webview-hide-scrollbars';
+    let style = document.getElementById(id);
+    if (!style) {
+        style = document.createElement('style');
+        style.id = id;
+        const root = document.head || document.documentElement;
+        if (!root) {
+            return;
+        }
+        root.appendChild(style);
+    }
+    style.textContent = 'html, body { scrollbar-width: none !important; -ms-overflow-style: none !important; } ::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }';
+})();
+)JS";
+const wchar_t kRemoveHideScrollbarsScript[] = LR"JS(
+(() => {
+    const style = document.getElementById('rish-webview-hide-scrollbars');
+    if (style) {
+        style.remove();
+    }
+})();
+)JS";
 const int kOnlineStoreDeleteZoneWidth = 42;
 const int kOnlineStoreMenuPaddingX = 12;
 
@@ -61,6 +86,15 @@ struct OnlineStoreDialogData
     wchar_t url[MAX_ONLINE_STORE_URL];
 };
 
+struct WebViewSessionState
+{
+    DWORD magic;
+    DWORD version;
+    BOOL reopen;
+    wchar_t url[MAX_ONLINE_STORE_URL];
+    double zoomFactor;
+};
+
 class EmbeddedWereadView;
 EmbeddedWereadView* GetView(HWND hParent, bool create);
 
@@ -68,6 +102,99 @@ RECT g_deleteRects[MAX_ONLINE_STORE_COUNT] = {0};
 BOOL g_deleteRectValid[MAX_ONLINE_STORE_COUNT] = {0};
 HMENU g_onlineStoreMenu = NULL;
 int g_onlineStoreMenuPositions[MAX_ONLINE_STORE_COUNT] = {0};
+const DWORD kWebViewStateMagic = 0x57565253;
+const DWORD kWebViewStateVersion = 2;
+const double kDefaultZoomFactor = 1.0;
+const double kMinZoomFactor = 0.25;
+const double kMaxZoomFactor = 5.0;
+
+double NormalizeZoomFactor(double zoomFactor)
+{
+    if (zoomFactor < kMinZoomFactor || zoomFactor > kMaxZoomFactor)
+        return kDefaultZoomFactor;
+    return zoomFactor;
+}
+
+
+bool GetWebViewStateFilePath(wchar_t* buffer, size_t cchBuffer)
+{
+    size_t len;
+
+    if (!buffer || cchBuffer == 0)
+        return false;
+
+    if (!GetModuleFileNameW(NULL, buffer, (DWORD)cchBuffer))
+        return false;
+
+    len = wcslen(buffer);
+    while (len > 0 && buffer[len - 1] != L'\\' && buffer[len - 1] != L'/')
+        buffer[--len] = L'\0';
+
+    return SUCCEEDED(StringCchCatW(buffer, cchBuffer, kWebViewStateFileName));
+}
+
+void SaveWebViewSessionState(BOOL reopen, const wchar_t* url, double zoomFactor)
+{
+    wchar_t fileName[MAX_PATH] = {0};
+    WebViewSessionState state = {0};
+    HANDLE hFile;
+    DWORD bytesWritten = 0;
+
+    if (!url || !url[0] || !GetWebViewStateFilePath(fileName, ARRAYSIZE(fileName)))
+        return;
+
+    state.magic = kWebViewStateMagic;
+    state.version = kWebViewStateVersion;
+    state.reopen = reopen;
+    StringCchCopyW(state.url, ARRAYSIZE(state.url), url);
+    state.zoomFactor = NormalizeZoomFactor(zoomFactor);
+
+    hFile = CreateFileW(fileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, NULL);
+    if (hFile == INVALID_HANDLE_VALUE)
+        return;
+
+    WriteFile(hFile, &state, sizeof(state), &bytesWritten, NULL);
+    CloseHandle(hFile);
+}
+
+bool LoadWebViewSessionState(WebViewSessionState* state)
+{
+    wchar_t fileName[MAX_PATH] = {0};
+    HANDLE hFile;
+    DWORD bytesRead = 0;
+
+    if (!state || !GetWebViewStateFilePath(fileName, ARRAYSIZE(fileName)))
+        return false;
+
+    hFile = CreateFileW(fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_HIDDEN, NULL);
+    if (hFile == INVALID_HANDLE_VALUE)
+        return false;
+
+    ZeroMemory(state, sizeof(*state));
+    if (!ReadFile(hFile, state, sizeof(*state), &bytesRead, NULL))
+    {
+        CloseHandle(hFile);
+        return false;
+    }
+    CloseHandle(hFile);
+
+    DWORD minBytesRead = sizeof(DWORD) * 2 + sizeof(BOOL) + sizeof(state->url);
+    if (bytesRead < minBytesRead
+        || state->magic != kWebViewStateMagic
+        || state->version < 1
+        || state->version > kWebViewStateVersion
+        || !state->url[0])
+    {
+        return false;
+    }
+
+    if (state->version < 2 || bytesRead < sizeof(*state))
+        state->zoomFactor = kDefaultZoomFactor;
+    else
+        state->zoomFactor = NormalizeZoomFactor(state->zoomFactor);
+
+    return true;
+}
 
 void TrimText(wchar_t* text)
 {
@@ -470,7 +597,7 @@ void RegisterDragStripClass()
 class EmbeddedWereadView
 {
 public:
-    explicit EmbeddedWereadView(HWND hParent) : m_hParent(hParent) {}
+    explicit EmbeddedWereadView(HWND hParent) : m_hParent(hParent) { LoadSavedZoomFactor(); }
 
     ~EmbeddedWereadView()
     {
@@ -485,6 +612,23 @@ public:
     BOOL IsVisible() const
     {
         return m_visible;
+    }
+
+    BOOL HasLastPageUrl() const
+    {
+        return m_lastPageUrl[0] != L'\0';
+    }
+
+    const wchar_t* LastPageUrl() const
+    {
+        return m_lastPageUrl[0] ? m_lastPageUrl : m_currentUrl;
+    }
+
+    void SetZoomFactor(double zoomFactor)
+    {
+        m_zoomFactor = NormalizeZoomFactor(zoomFactor);
+        if (m_controller)
+            m_controller->put_ZoomFactor(m_zoomFactor);
     }
 
     void Toggle(const wchar_t* url)
@@ -506,6 +650,8 @@ public:
         if (m_controller)
         {
             ApplyControllerBackground();
+            ApplyPageScrollbarScript();
+            SaveCurrentSessionState(TRUE);
             if (!sameUrl && m_webView)
                 NavigateCurrentUrl(false);
             m_controller->put_IsVisible(TRUE);
@@ -517,7 +663,9 @@ public:
 
     void Hide()
     {
+        CaptureCurrentPageUrl();
         m_visible = FALSE;
+        SaveCurrentSessionState(FALSE);
         if (m_controller)
             m_controller->put_IsVisible(FALSE);
         UpdateDragStrip();
@@ -525,6 +673,8 @@ public:
 
     void Close()
     {
+        CaptureCurrentPageUrl();
+        SaveCurrentSessionState(m_visible);
         DestroyDragStrip();
         m_webView.Reset();
         if (m_controller)
@@ -555,7 +705,10 @@ public:
         }
 
         if (m_controller && m_hasBounds)
+        {
             m_controller->put_Bounds(m_bounds);
+            ApplyPageScrollbarScript();
+        }
 
         UpdateDragStrip();
     }
@@ -583,6 +736,8 @@ private:
     {
         const wchar_t* actual = (url && url[0]) ? url : kWereadUrl;
         StringCchCopyW(m_currentUrl, ARRAYSIZE(m_currentUrl), actual);
+        if (!m_lastPageUrl[0])
+            StringCchCopyW(m_lastPageUrl, ARRAYSIZE(m_lastPageUrl), actual);
     }
 
     void NavigateCurrentUrl(bool useHttpFallback)
@@ -594,6 +749,8 @@ private:
 
         m_pendingFallbackNavigationId = 0;
         m_canFallbackToHttp = false;
+        StringCchCopyW(m_lastPageUrl, ARRAYSIZE(m_lastPageUrl), m_navigationUrl);
+        SaveCurrentSessionState(m_visible);
         m_webView->Navigate(m_navigationUrl);
     }
 
@@ -656,9 +813,11 @@ private:
 
                                 self->m_controller = controller;
                                 self->m_controller->get_CoreWebView2(&self->m_webView);
+                                self->SetZoomFactor(self->m_zoomFactor);
                                 self->ApplyControllerBackground();
                                 self->RegisterAcceleratorKeyHandler();
                                 self->RegisterNavigationCompletedHandler();
+                                self->RegisterZoomFactorChangedHandler();
                                 self->Resize(NULL);
                                 self->m_controller->put_IsVisible(self->m_visible);
                                 self->UpdateDragStrip();
@@ -715,6 +874,33 @@ private:
                     return S_OK;
                 }).Get(),
             &m_acceleratorKeyToken);
+    }
+
+    void RegisterZoomFactorChangedHandler()
+    {
+        HWND hParent = m_hParent;
+        if (!m_controller)
+            return;
+
+        m_controller->add_ZoomFactorChanged(
+            Callback<ICoreWebView2ZoomFactorChangedEventHandler>(
+                [hParent](ICoreWebView2Controller*, IUnknown*) -> HRESULT
+                {
+                    EmbeddedWereadView* self = GetView(hParent, false);
+                    double zoomFactor = kDefaultZoomFactor;
+
+                    if (!self || !self->m_controller)
+                        return S_OK;
+
+                    if (SUCCEEDED(self->m_controller->get_ZoomFactor(&zoomFactor)))
+                    {
+                        self->m_zoomFactor = NormalizeZoomFactor(zoomFactor);
+                        self->SaveCurrentSessionState(self->m_visible);
+                    }
+
+                    return S_OK;
+                }).Get(),
+            &m_zoomFactorChangedToken);
     }
 
     void RegisterNavigationCompletedHandler()
@@ -779,7 +965,10 @@ private:
                     {
                         self->m_canFallbackToHttp = false;
                         self->m_pendingFallbackNavigationId = 0;
+                        self->CaptureCurrentPageUrl();
+                        self->SaveCurrentSessionState(self->m_visible);
                         self->ApplyPageBackgroundScript();
+                        self->ApplyPageScrollbarScript();
                     }
                     else if (self->m_canFallbackToHttp)
                     {
@@ -846,6 +1035,49 @@ private:
         m_webView->ExecuteScript(
             IsTransparentBackgroundEnabled() ? kTransparentBackgroundScript : kRemoveTransparentBackgroundScript,
             nullptr);
+    }
+
+    bool ShouldHidePageScrollbars() const
+    {
+        return m_visible && IsWereadDragStripEnabled(m_hParent);
+    }
+
+    void ApplyPageScrollbarScript()
+    {
+        if (!m_webView)
+            return;
+
+        m_webView->ExecuteScript(
+            ShouldHidePageScrollbars() ? kHideScrollbarsScript : kRemoveHideScrollbarsScript,
+            nullptr);
+    }
+
+    void CaptureCurrentPageUrl()
+    {
+        LPWSTR source = NULL;
+
+        if (!m_webView)
+            return;
+
+        if (SUCCEEDED(m_webView->get_Source(&source)) && source && source[0])
+            StringCchCopyW(m_lastPageUrl, ARRAYSIZE(m_lastPageUrl), source);
+
+        if (source)
+            CoTaskMemFree(source);
+    }
+
+    void SaveCurrentSessionState(BOOL reopen)
+    {
+        const wchar_t* url = LastPageUrl();
+        if (url && url[0])
+            SaveWebViewSessionState(reopen, url, m_zoomFactor);
+    }
+
+    void LoadSavedZoomFactor()
+    {
+        WebViewSessionState state;
+        if (LoadWebViewSessionState(&state))
+            m_zoomFactor = NormalizeZoomFactor(state.zoomFactor);
     }
 
     bool ShouldShowDragStrip() const
@@ -930,10 +1162,13 @@ private:
     UINT64 m_pendingFallbackNavigationId = 0;
     RECT m_bounds = {0};
     wchar_t m_currentUrl[MAX_ONLINE_STORE_URL] = {0};
+    wchar_t m_lastPageUrl[MAX_ONLINE_STORE_URL] = {0};
     wchar_t m_navigationUrl[MAX_ONLINE_STORE_URL] = {0};
+    double m_zoomFactor = kDefaultZoomFactor;
     EventRegistrationToken m_acceleratorKeyToken = {0};
     EventRegistrationToken m_navigationStartingToken = {0};
     EventRegistrationToken m_navigationCompletedToken = {0};
+    EventRegistrationToken m_zoomFactorChangedToken = {0};
     ComPtr<ICoreWebView2Environment> m_environment;
     ComPtr<ICoreWebView2Controller> m_controller;
     ComPtr<ICoreWebView2> m_webView;
@@ -958,6 +1193,15 @@ EmbeddedWereadView* GetView(HWND hParent, bool create)
 
 void OpenWereadWebView(HWND hParent)
 {
+    WebViewSessionState state;
+    EmbeddedWereadView* view = GetView(hParent, false);
+
+    if ((!view || !view->IsVisible()) && LoadWebViewSessionState(&state))
+    {
+        OpenOnlineStoreWebView(hParent, state.url);
+        return;
+    }
+
     OpenOnlineStoreWebView(hParent, kWereadUrl);
 }
 
@@ -966,6 +1210,23 @@ void OpenOnlineStoreWebView(HWND hParent, const wchar_t* url)
     EmbeddedWereadView* view = GetView(hParent, true);
     if (view)
         view->Toggle(url);
+}
+
+BOOL RestoreLastOnlineStoreWebView(HWND hParent)
+{
+    WebViewSessionState state;
+    EmbeddedWereadView* view;
+
+    if (!LoadWebViewSessionState(&state) || !state.reopen)
+        return FALSE;
+
+    view = GetView(hParent, true);
+    if (!view)
+        return FALSE;
+
+    view->SetZoomFactor(state.zoomFactor);
+    view->Show(state.url);
+    return TRUE;
 }
 
 BOOL OpenCustomOnlineStoreWebView(HWND hParent, int index)
