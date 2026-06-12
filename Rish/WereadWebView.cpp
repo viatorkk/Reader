@@ -1,4 +1,5 @@
 #include "WereadWebView.h"
+#include "DPIAwareness.h"
 #include "resource.h"
 #include "types.h"
 
@@ -26,7 +27,25 @@ namespace
 {
 const wchar_t kWereadUrl[] = L"https://weread.qq.com/";
 const wchar_t kDragStripClass[] = L"RishWereadDragStrip";
-const int kDragStripHeight = 12;
+const int kBorderlessResizeMargin = 8;
+const int kBorderlessTopReserve = 24;
+const int kDragStripHeight = kBorderlessTopReserve - kBorderlessResizeMargin;
+const int kDragHandleWidth = 48;
+const int kDragHandleHoverWidth = 56;
+const int kDragHandleCompactWidth = 32;
+const int kDragHandleHeight = 3;
+const int kDragHandleCompactThreshold = 240;
+const int kDragHandleHiddenThreshold = 160;
+const BYTE kDragHandleDefaultAlpha = 20;
+const BYTE kDragHandleHoverAlpha = 80;
+const BYTE kDragHandlePressedAlpha = 145;
+const BYTE kDragHandleDarkDefaultAlpha = 64;
+const BYTE kDragHandleDarkHoverAlpha = 96;
+const BYTE kDragHandleDarkPressedAlpha = 160;
+const COLORREF kDragStripColorKey = RGB(1, 0, 1);
+const COLORREF kDragHandleDarkColor = RGB(176, 176, 176);
+const wchar_t kDragStripThemeDarkMessage[] = L"rish-drag-strip-theme:dark";
+const wchar_t kDragStripThemeLightMessage[] = L"rish-drag-strip-theme:light";
 const wchar_t kOnlineBookStoreTitle[] = L"\u5728\u7ebf\u4e66\u57ce";
 const wchar_t kWebViewStateFileName[] = L".webview.dat";
 const wchar_t kWereadMenuTitle[] = L"\u5fae\u4fe1\u9605\u8bfb(&W)";
@@ -77,6 +96,86 @@ const wchar_t kRemoveHideScrollbarsScript[] = LR"JS(
     }
 })();
 )JS";
+const wchar_t kDetectDragStripThemeScript[] = LR"JS(
+(() => {
+    const observerKey = '__rishDragStripThemeObserver';
+    const timerKey = '__rishDragStripThemeTimer';
+    const messageKey = '__rishDragStripThemeMessage';
+
+    const parseColor = value => {
+        const match = value && value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+        if (!match || (match[4] !== undefined && Number(match[4]) <= 0.05)) {
+            return null;
+        }
+        return [Number(match[1]), Number(match[2]), Number(match[3])];
+    };
+
+    const findBackground = () => {
+        const x = Math.max(0, Math.min(window.innerWidth - 1, Math.floor(window.innerWidth / 2)));
+        const y = Math.max(0, Math.min(window.innerHeight - 1, 8));
+        let element = document.elementFromPoint(x, y) || document.body || document.documentElement;
+        while (element) {
+            const color = parseColor(getComputedStyle(element).backgroundColor);
+            if (color) {
+                return color;
+            }
+            element = element.parentElement;
+        }
+        const textColor = parseColor(getComputedStyle(document.body || document.documentElement).color);
+        if (textColor) {
+            const lightText = textColor[0] * 299 + textColor[1] * 587 + textColor[2] * 114 >= 128000;
+            return lightText ? [0, 0, 0] : [255, 255, 255];
+        }
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? [0, 0, 0] : [255, 255, 255];
+    };
+
+    const report = () => {
+        const color = findBackground();
+        if (!color || !window.chrome || !window.chrome.webview) {
+            return;
+        }
+        const dark = color[0] * 299 + color[1] * 587 + color[2] * 114 < 128000;
+        const message = `rish-drag-strip-theme:${dark ? 'dark' : 'light'}`;
+        if (window[messageKey] !== message) {
+            window[messageKey] = message;
+            window.chrome.webview.postMessage(message);
+        }
+    };
+
+    const scheduleReport = () => {
+        clearTimeout(window[timerKey]);
+        window[timerKey] = setTimeout(report, 40);
+    };
+
+    if (window[observerKey]) {
+        window[observerKey].observer.disconnect();
+        window.removeEventListener('resize', window[observerKey].scheduleReport);
+        if (window[observerKey].media.removeEventListener) {
+            window[observerKey].media.removeEventListener('change', window[observerKey].scheduleReport);
+        } else {
+            window[observerKey].media.removeListener(window[observerKey].scheduleReport);
+        }
+    }
+    const observer = new MutationObserver(scheduleReport);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+        childList: true,
+        subtree: true
+    });
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    window[observerKey] = { observer, scheduleReport, media };
+    window.addEventListener('resize', scheduleReport);
+    if (media.addEventListener) {
+        media.addEventListener('change', scheduleReport);
+    } else {
+        media.addListener(scheduleReport);
+    }
+    report();
+    setTimeout(report, 250);
+    setTimeout(report, 1000);
+})();
+)JS";
 const int kOnlineStoreDeleteZoneWidth = 42;
 const int kOnlineStoreMenuPaddingX = 12;
 
@@ -113,6 +212,32 @@ double NormalizeZoomFactor(double zoomFactor)
     if (zoomFactor < kMinZoomFactor || zoomFactor > kMaxZoomFactor)
         return kDefaultZoomFactor;
     return zoomFactor;
+}
+
+bool IsWereadUrl(const wchar_t* url)
+{
+    const wchar_t* hosts[] = {
+        L"http://weread.qq.com",
+        L"https://weread.qq.com"
+    };
+
+    if (!url)
+        return false;
+
+    for (int i = 0; i < ARRAYSIZE(hosts); i++)
+    {
+        size_t length = wcslen(hosts[i]);
+        wchar_t next;
+
+        if (_wcsnicmp(url, hosts[i], length) != 0)
+            continue;
+
+        next = url[length];
+        if (next == L'\0' || next == L'/' || next == L'?' || next == L'#')
+            return true;
+    }
+
+    return false;
 }
 
 
@@ -192,6 +317,10 @@ bool LoadWebViewSessionState(WebViewSessionState* state)
         state->zoomFactor = kDefaultZoomFactor;
     else
         state->zoomFactor = NormalizeZoomFactor(state->zoomFactor);
+
+    // WeRead synchronizes reading progress itself, so restart from its home page.
+    if (IsWereadUrl(state->url))
+        StringCchCopyW(state->url, ARRAYSIZE(state->url), kWereadUrl);
 
     return true;
 }
@@ -550,25 +679,165 @@ void BeginParentDrag(HWND hWnd)
     SendMessage(hParent, WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(pt.x, pt.y));
 }
 
+enum DragStripState
+{
+    DragStripHovered = 0x01,
+    DragStripPressed = 0x02,
+    DragStripTracking = 0x04,
+    DragStripDarkBackground = 0x08
+};
+
+UINT GetDragStripState(HWND hWnd)
+{
+    return (UINT)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+}
+
+BYTE GetDragStripAlpha(UINT state)
+{
+    bool darkBackground = (state & DragStripDarkBackground) != 0;
+
+    if (state & DragStripPressed)
+        return darkBackground ? kDragHandleDarkPressedAlpha : kDragHandlePressedAlpha;
+    if (state & DragStripHovered)
+        return darkBackground ? kDragHandleDarkHoverAlpha : kDragHandleHoverAlpha;
+    return darkBackground ? kDragHandleDarkDefaultAlpha : kDragHandleDefaultAlpha;
+}
+
+void SetDragStripState(HWND hWnd, UINT state)
+{
+    SetWindowLongPtr(hWnd, GWLP_USERDATA, state);
+    SetLayeredWindowAttributes(
+        hWnd,
+        kDragStripColorKey,
+        GetDragStripAlpha(state),
+        LWA_COLORKEY | LWA_ALPHA);
+    InvalidateRect(hWnd, NULL, FALSE);
+}
+
+void RestoreDragStripStateAfterDrag(HWND hWnd)
+{
+    POINT pt;
+    RECT rc;
+    UINT state = GetDragStripState(hWnd) & ~(DragStripHovered | DragStripPressed | DragStripTracking);
+
+    if (GetCursorPos(&pt) && ScreenToClient(hWnd, &pt) && GetClientRect(hWnd, &rc) && PtInRect(&rc, pt))
+    {
+        TRACKMOUSEEVENT tracking = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, hWnd, 0};
+        TrackMouseEvent(&tracking);
+        state |= DragStripHovered | DragStripTracking;
+    }
+
+    SetDragStripState(hWnd, state);
+}
+
+void ToggleParentMaximized(HWND hWnd)
+{
+    HWND hParent = GetParent(hWnd);
+    if (!hParent)
+        return;
+
+    SendMessage(hParent, WM_SYSCOMMAND, IsZoomed(hParent) ? SC_RESTORE : SC_MAXIMIZE, 0);
+}
+
+void PaintDragStrip(HWND hWnd, HDC hdc)
+{
+    RECT rc;
+    RECT parentRc;
+    HBRUSH backgroundBrush;
+    HBRUSH handleBrush;
+    HGDIOBJ oldBrush;
+    HGDIOBJ oldPen;
+    UINT state = GetDragStripState(hWnd);
+    COLORREF handleColor = (state & DragStripDarkBackground) ? kDragHandleDarkColor : RGB(0, 0, 0);
+    int parentWidth;
+    int handleWidth;
+    int handleHeight;
+    int radius;
+
+    GetClientRect(hWnd, &rc);
+    backgroundBrush = CreateSolidBrush(kDragStripColorKey);
+    FillRect(hdc, &rc, backgroundBrush);
+    DeleteObject(backgroundBrush);
+
+    if (!GetClientRect(GetParent(hWnd), &parentRc))
+        return;
+
+    parentWidth = parentRc.right - parentRc.left;
+    if (parentWidth < GetWidthForDpi(kDragHandleHiddenThreshold))
+        return;
+
+    handleWidth = parentWidth < GetWidthForDpi(kDragHandleCompactThreshold)
+        ? GetWidthForDpi(kDragHandleCompactWidth)
+        : GetWidthForDpi(kDragHandleWidth);
+    if (state & (DragStripHovered | DragStripPressed))
+        handleWidth = GetWidthForDpi(kDragHandleHoverWidth);
+
+    handleHeight = GetHeightForDpi(kDragHandleHeight);
+    if (handleHeight < 1)
+        handleHeight = 1;
+    if (handleWidth > rc.right - rc.left)
+        handleWidth = rc.right - rc.left;
+
+    rc.left = (rc.right - handleWidth) / 2;
+    rc.right = rc.left + handleWidth;
+    rc.top = (rc.bottom - handleHeight) / 2;
+    rc.bottom = rc.top + handleHeight;
+    radius = handleHeight;
+
+    if (handleColor == kDragStripColorKey)
+        handleColor ^= 1;
+    handleBrush = CreateSolidBrush(handleColor);
+    oldBrush = SelectObject(hdc, handleBrush);
+    oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius, radius);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(handleBrush);
+}
+
 LRESULT CALLBACK DragStripProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    UINT state;
+
     switch (message)
     {
     case WM_NCHITTEST:
-        return HTCAPTION;
+        return HTCLIENT;
     case WM_SETCURSOR:
-        SetCursor(LoadCursor(NULL, IDC_SIZEALL));
+        SetCursor(LoadCursor(NULL, IDC_ARROW));
         return TRUE;
+    case WM_MOUSEMOVE:
+        state = GetDragStripState(hWnd);
+        if (!(state & DragStripTracking))
+        {
+            TRACKMOUSEEVENT tracking = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, hWnd, 0};
+            TrackMouseEvent(&tracking);
+            state |= DragStripTracking;
+        }
+        if (!(state & DragStripHovered))
+            SetDragStripState(hWnd, state | DragStripHovered);
+        return 0;
+    case WM_MOUSELEAVE:
+        state = GetDragStripState(hWnd);
+        SetDragStripState(hWnd, state & ~(DragStripHovered | DragStripTracking));
+        return 0;
     case WM_LBUTTONDOWN:
-    case WM_NCLBUTTONDOWN:
+        state = GetDragStripState(hWnd) | DragStripHovered | DragStripPressed;
+        SetDragStripState(hWnd, state);
+        UpdateWindow(hWnd);
         BeginParentDrag(hWnd);
+        RestoreDragStripStateAfterDrag(hWnd);
+        return 0;
+    case WM_LBUTTONDBLCLK:
+        ToggleParentMaximized(hWnd);
         return 0;
     case WM_ERASEBKGND:
         return TRUE;
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
-        BeginPaint(hWnd, &ps);
+        HDC hdc = BeginPaint(hWnd, &ps);
+        PaintDragStrip(hWnd, hdc);
         EndPaint(hWnd, &ps);
         return 0;
     }
@@ -587,9 +856,10 @@ void RegisterDragStripClass()
 
     WNDCLASSEXW wcex = {0};
     wcex.cbSize = sizeof(wcex);
+    wcex.style = CS_DBLCLKS;
     wcex.lpfnWndProc = DragStripProc;
     wcex.hInstance = GetModuleHandle(NULL);
-    wcex.hCursor = LoadCursor(NULL, IDC_SIZEALL);
+    wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
     wcex.lpszClassName = kDragStripClass;
     atom = RegisterClassExW(&wcex);
 }
@@ -706,7 +976,8 @@ public:
 
         if (m_controller && m_hasBounds)
         {
-            m_controller->put_Bounds(m_bounds);
+            RECT controllerBounds = GetControllerBounds();
+            m_controller->put_Bounds(controllerBounds);
             ApplyPageScrollbarScript();
         }
 
@@ -723,6 +994,9 @@ public:
     {
         ApplyControllerBackground();
         ApplyPageBackgroundScript();
+        ApplyDragStripThemeScript();
+        if (m_hDragStrip && IsWindow(m_hDragStrip))
+            InvalidateRect(m_hDragStrip, NULL, FALSE);
     }
 
     BOOL IsCurrentUrl(const wchar_t* url) const
@@ -817,6 +1091,7 @@ private:
                                 self->ApplyControllerBackground();
                                 self->RegisterAcceleratorKeyHandler();
                                 self->RegisterNavigationCompletedHandler();
+                                self->RegisterWebMessageHandler();
                                 self->RegisterZoomFactorChangedHandler();
                                 self->Resize(NULL);
                                 self->m_controller->put_IsVisible(self->m_visible);
@@ -969,6 +1244,7 @@ private:
                         self->SaveCurrentSessionState(self->m_visible);
                         self->ApplyPageBackgroundScript();
                         self->ApplyPageScrollbarScript();
+                        self->ApplyDragStripThemeScript();
                     }
                     else if (self->m_canFallbackToHttp)
                     {
@@ -980,6 +1256,42 @@ private:
                     return S_OK;
                 }).Get(),
             &m_navigationCompletedToken);
+    }
+
+    void RegisterWebMessageHandler()
+    {
+        HWND hParent = m_hParent;
+        ComPtr<ICoreWebView2Settings> settings;
+
+        if (!m_webView)
+            return;
+
+        if (SUCCEEDED(m_webView->get_Settings(&settings)) && settings)
+            settings->put_IsWebMessageEnabled(TRUE);
+
+        m_webView->add_WebMessageReceived(
+            Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                [hParent](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
+                {
+                    EmbeddedWereadView* self = GetView(hParent, false);
+                    LPWSTR message = NULL;
+
+                    if (!self || !args)
+                        return S_OK;
+
+                    if (SUCCEEDED(args->TryGetWebMessageAsString(&message)) && message)
+                    {
+                        if (wcscmp(message, kDragStripThemeDarkMessage) == 0)
+                            self->SetDragStripDarkBackground(true);
+                        else if (wcscmp(message, kDragStripThemeLightMessage) == 0)
+                            self->SetDragStripDarkBackground(false);
+                    }
+
+                    if (message)
+                        CoTaskMemFree(message);
+                    return S_OK;
+                }).Get(),
+            &m_webMessageReceivedToken);
     }
 
     void GetUserDataFolder(wchar_t* buffer, size_t cchBuffer)
@@ -1052,6 +1364,12 @@ private:
             nullptr);
     }
 
+    void ApplyDragStripThemeScript()
+    {
+        if (m_webView)
+            m_webView->ExecuteScript(kDetectDragStripThemeScript, nullptr);
+    }
+
     void CaptureCurrentPageUrl()
     {
         LPWSTR source = NULL;
@@ -1068,7 +1386,7 @@ private:
 
     void SaveCurrentSessionState(BOOL reopen)
     {
-        const wchar_t* url = LastPageUrl();
+        const wchar_t* url = IsWereadUrl(m_currentUrl) ? kWereadUrl : LastPageUrl();
         if (url && url[0])
             SaveWebViewSessionState(reopen, url, m_zoomFactor);
     }
@@ -1080,6 +1398,58 @@ private:
             m_zoomFactor = NormalizeZoomFactor(state.zoomFactor);
     }
 
+    bool ShouldReserveResizeMargin() const
+    {
+        LONG_PTR style;
+
+        if (!m_visible || !m_hasBounds || !IsWindow(m_hParent))
+            return false;
+
+        style = GetWindowLongPtr(m_hParent, GWL_STYLE);
+        return (style & WS_CAPTION) == 0 && IsWereadDragStripEnabled(m_hParent);
+    }
+
+    int GetBorderlessResizeMarginX() const
+    {
+        return GetWidthForDpi(kBorderlessResizeMargin);
+    }
+
+    int GetBorderlessResizeMarginY() const
+    {
+        return GetHeightForDpi(kBorderlessResizeMargin);
+    }
+
+    RECT GetControllerBounds() const
+    {
+        RECT bounds = m_bounds;
+        int marginX;
+        int marginY;
+        int topReserve;
+
+        if (!ShouldReserveResizeMargin())
+            return bounds;
+
+        marginX = GetBorderlessResizeMarginX();
+        marginY = GetBorderlessResizeMarginY();
+        topReserve = GetHeightForDpi(kBorderlessTopReserve);
+        if (marginX <= 0 || marginY <= 0 || topReserve <= 0)
+            return bounds;
+
+        bounds.left += marginX;
+        bounds.top += topReserve;
+        bounds.right -= marginX;
+        bounds.bottom -= marginY;
+        if (bounds.left > m_bounds.right)
+            bounds.left = m_bounds.right;
+        if (bounds.top > m_bounds.bottom)
+            bounds.top = m_bounds.bottom;
+        if (bounds.right < bounds.left)
+            bounds.right = bounds.left;
+        if (bounds.bottom < bounds.top)
+            bounds.bottom = bounds.top;
+        return bounds;
+    }
+
     bool ShouldShowDragStrip() const
     {
         LONG_PTR style;
@@ -1089,6 +1459,30 @@ private:
 
         style = GetWindowLongPtr(m_hParent, GWL_STYLE);
         return (style & WS_CAPTION) == 0 && IsWereadDragStripEnabled(m_hParent);
+    }
+
+    UINT DragStripThemeState() const
+    {
+        return m_dragStripDarkBackground ? DragStripDarkBackground : 0;
+    }
+
+    void SetDragStripDarkBackground(bool darkBackground)
+    {
+        UINT state;
+
+        if (m_dragStripDarkBackground == darkBackground)
+            return;
+
+        m_dragStripDarkBackground = darkBackground;
+        if (!m_hDragStrip || !IsWindow(m_hDragStrip))
+            return;
+
+        state = GetDragStripState(m_hDragStrip);
+        if (darkBackground)
+            state |= DragStripDarkBackground;
+        else
+            state &= ~DragStripDarkBackground;
+        SetDragStripState(m_hDragStrip, state);
     }
 
     void EnsureDragStrip()
@@ -1112,7 +1506,9 @@ private:
             NULL);
 
         if (m_hDragStrip)
-            SetLayeredWindowAttributes(m_hDragStrip, 0, 1, LWA_ALPHA);
+        {
+            SetDragStripState(m_hDragStrip, DragStripThemeState());
+        }
     }
 
     void DestroyDragStrip()
@@ -1127,7 +1523,10 @@ private:
         if (!ShouldShowDragStrip())
         {
             if (m_hDragStrip && IsWindow(m_hDragStrip))
+            {
+                SetDragStripState(m_hDragStrip, DragStripThemeState());
                 ShowWindow(m_hDragStrip, SW_HIDE);
+            }
             return;
         }
 
@@ -1135,20 +1534,30 @@ private:
         if (!m_hDragStrip)
             return;
 
-        int width = m_bounds.right - m_bounds.left;
-        int height = m_bounds.bottom - m_bounds.top;
-        if (width <= 0 || height <= 0)
+        int marginX = GetBorderlessResizeMarginX();
+        int marginY = GetBorderlessResizeMarginY();
+        int stripHeight = GetHeightForDpi(kDragStripHeight);
+        int x = m_bounds.left + marginX;
+        int y = m_bounds.top + marginY;
+        int width = m_bounds.right - m_bounds.left - marginX * 2;
+        int availableHeight = m_bounds.bottom - y;
+        if (width <= 0 || availableHeight <= 0)
+        {
+            ShowWindow(m_hDragStrip, SW_HIDE);
             return;
+        }
 
-        height = height < kDragStripHeight ? height : kDragStripHeight;
+        if (stripHeight > availableHeight)
+            stripHeight = availableHeight;
         SetWindowPos(
             m_hDragStrip,
             HWND_TOP,
-            m_bounds.left,
-            m_bounds.top,
+            x,
+            y,
             width,
-            height,
+            stripHeight,
             SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        InvalidateRect(m_hDragStrip, NULL, FALSE);
     }
 
 private:
@@ -1159,6 +1568,7 @@ private:
     bool m_comInitialized = false;
     bool m_hasBounds = false;
     bool m_canFallbackToHttp = false;
+    bool m_dragStripDarkBackground = false;
     UINT64 m_pendingFallbackNavigationId = 0;
     RECT m_bounds = {0};
     wchar_t m_currentUrl[MAX_ONLINE_STORE_URL] = {0};
@@ -1168,6 +1578,7 @@ private:
     EventRegistrationToken m_acceleratorKeyToken = {0};
     EventRegistrationToken m_navigationStartingToken = {0};
     EventRegistrationToken m_navigationCompletedToken = {0};
+    EventRegistrationToken m_webMessageReceivedToken = {0};
     EventRegistrationToken m_zoomFactorChangedToken = {0};
     ComPtr<ICoreWebView2Environment> m_environment;
     ComPtr<ICoreWebView2Controller> m_controller;
@@ -1193,15 +1604,6 @@ EmbeddedWereadView* GetView(HWND hParent, bool create)
 
 void OpenWereadWebView(HWND hParent)
 {
-    WebViewSessionState state;
-    EmbeddedWereadView* view = GetView(hParent, false);
-
-    if ((!view || !view->IsVisible()) && LoadWebViewSessionState(&state))
-    {
-        OpenOnlineStoreWebView(hParent, state.url);
-        return;
-    }
-
     OpenOnlineStoreWebView(hParent, kWereadUrl);
 }
 

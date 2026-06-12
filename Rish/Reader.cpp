@@ -100,7 +100,7 @@ static void ApplyWindowTransparency(HWND hWnd)
 
 static BOOL IsOnlineStoreTransparentBackdropVisible(HWND hWnd)
 {
-    return _header && _header->webview_transparent_bg && IsWereadWebViewVisible(hWnd);
+    return IsWereadWebViewVisible(hWnd) && ((_header && _header->webview_transparent_bg) || _WndInfo.status == ds_borderless);
 }
 
 static void PaintOnlineStoreBackdrop(HWND hWnd, HDC hdc)
@@ -804,7 +804,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             else
             {
-                if (_header->page_mode == 2)
+                if (IsWereadWebViewVisible(hWnd) && pt.y < rc.top + GetHeightForDpi(24))
+                {
+                    hit = HTCAPTION;
+                }
+                else if (_header->page_mode == 2)
                 {
                     rc.left = rc.right/3;
                     rc.right = rc.right/3 * 2;
@@ -2296,9 +2300,9 @@ VOID OnDraw(HWND hWnd)
         is_blank = _Book->IsBlankPage();
     }
 
-    if (_header->opaque_text_transparent_bg)
+    if (_header->opaque_text_transparent_bg || IsOnlineStoreTransparentBackdropVisible(hWnd))
     {
-        // Keep a hit-testable layered surface while making the reading background visually transparent.
+        // Keep a hit-testable layered surface while making the background visually transparent.
         alpha = TRANSPARENT_BG_HIT_ALPHA;
     }
     else if (is_blank)
