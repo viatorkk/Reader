@@ -17,7 +17,6 @@ typedef struct display_set_data_t
     u32 bg_color;
     BYTE alpha;
     int opaque_text_transparent_bg;
-    int webview_transparent_bg;
     bg_image_t bg_image;
     int char_gap;
     int line_gap;
@@ -117,7 +116,6 @@ static BYTE _percent_to_alpha(int percent)
     (d)->bg_color = (s)->bg_color; \
     (d)->alpha = (s)->alpha; \
     (d)->opaque_text_transparent_bg = (s)->opaque_text_transparent_bg; \
-    (d)->webview_transparent_bg = (s)->webview_transparent_bg; \
     (d)->bg_image = (s)->bg_image; \
     (d)->char_gap = (s)->char_gap; \
     (d)->line_gap = (s)->line_gap; \
@@ -291,11 +289,6 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
             if (_display.hide_taskbar)
                 _display.show_systray = 1;
             break;
-        case IDC_CHECK_WEBVIEW_TRANSPARENT_BG:
-            res = (int)SendMessage(GetDlgItem(hDlg, IDC_CHECK_WEBVIEW_TRANSPARENT_BG), BM_GETCHECK, 0, NULL);
-            _display.webview_transparent_bg = BST_CHECKED == res ? 1 : 0;
-            break;
-
 
         default:
             break;
@@ -388,7 +381,6 @@ static void _init_layout_set(HWND hDlg)
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_CHAPTER_PAGE), BM_SETCHECK, _display.chapter_page ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_MOUSE_LEAVE_HIDE), BM_SETCHECK, _display.mouse_leave_hide ? BST_CHECKED : BST_UNCHECKED, NULL);
     SendMessage(GetDlgItem(hDlg, IDC_CHECK_TASKBAR), BM_SETCHECK, _display.hide_taskbar ? BST_CHECKED : BST_UNCHECKED, NULL);
-    SendMessage(GetDlgItem(hDlg, IDC_CHECK_WEBVIEW_TRANSPARENT_BG), BM_SETCHECK, _display.webview_transparent_bg ? BST_CHECKED : BST_UNCHECKED, NULL);
 }
 
 static void _enable_font_set(HWND hDlg, BOOL enable)

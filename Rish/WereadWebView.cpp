@@ -4,6 +4,7 @@
 #include "types.h"
 
 #include <WebView2.h>
+#include <commctrl.h>
 #include <cwctype>
 #include <shlobj.h>
 #include <strsafe.h>
@@ -27,23 +28,35 @@ namespace
 {
 const wchar_t kWereadUrl[] = L"https://weread.qq.com/";
 const wchar_t kDragStripClass[] = L"RishWereadDragStrip";
-const int kBorderlessResizeMargin = 8;
-const int kBorderlessTopReserve = 24;
+const int kBorderlessResizeMargin = 12;
+const int kBorderlessTopReserve = 32;
 const int kDragStripHeight = kBorderlessTopReserve - kBorderlessResizeMargin;
-const int kDragHandleWidth = 48;
-const int kDragHandleHoverWidth = 56;
-const int kDragHandleCompactWidth = 32;
-const int kDragHandleHeight = 3;
-const int kDragHandleCompactThreshold = 240;
-const int kDragHandleHiddenThreshold = 160;
 const BYTE kDragHandleDefaultAlpha = 20;
 const BYTE kDragHandleHoverAlpha = 80;
 const BYTE kDragHandlePressedAlpha = 145;
 const BYTE kDragHandleDarkDefaultAlpha = 64;
 const BYTE kDragHandleDarkHoverAlpha = 96;
 const BYTE kDragHandleDarkPressedAlpha = 160;
+const BYTE kNavControlsDefaultAlpha = 64;
+const BYTE kNavControlsHoverAlpha = 112;
+const BYTE kNavControlsPressedAlpha = 150;
+const BYTE kNavControlsDarkDefaultAlpha = 92;
+const BYTE kNavControlsDarkHoverAlpha = 132;
+const BYTE kNavControlsDarkPressedAlpha = 170;
 const COLORREF kDragStripColorKey = RGB(1, 0, 1);
-const COLORREF kDragHandleDarkColor = RGB(176, 176, 176);
+const int kNavButtonSize = 24;
+const int kNavButtonGap = 4;
+const int kNavButtonRightPadding = 12;
+const int kNavButtonCornerRadius = 6;
+const int kNavArrowIconWidth = 14;
+const int kNavArrowIconHeight = 12;
+const int kNavArrowHeadWidth = 7;
+const int kNavArrowShaftHeight = 5;
+const int kNavRefreshIconFontSize = 15;
+const wchar_t kNavBackTooltip[] = L"\u540e\u9000\u7f51\u9875";
+const wchar_t kNavForwardTooltip[] = L"\u524d\u8fdb\u7f51\u9875";
+const wchar_t kNavRefreshTooltip[] = L"\u5237\u65b0\u7f51\u9875";
+const wchar_t kDragStripTooltipProp[] = L"RishDragStripTooltip";
 const wchar_t kDragStripThemeDarkMessage[] = L"rish-drag-strip-theme:dark";
 const wchar_t kDragStripThemeLightMessage[] = L"rish-drag-strip-theme:light";
 const wchar_t kOnlineBookStoreTitle[] = L"\u5728\u7ebf\u4e66\u57ce";
@@ -52,18 +65,6 @@ const wchar_t kWereadMenuTitle[] = L"\u5fae\u4fe1\u9605\u8bfb(&W)";
 const wchar_t kAddUrlMenuTitle[] = L"\u6dfb\u52a0\u7f51\u5740...";
 const wchar_t kDeleteIcon[] = L"\u00d7";
 const wchar_t kRightClickDeleteHint[] = L"\u53f3\u952e\u5220\u9664";
-const wchar_t kTransparentBackgroundScript[] = LR"JS(
-(() => {
-    const id = 'rish-webview-transparent-bg';
-    let style = document.getElementById(id);
-    if (!style) {
-        style = document.createElement('style');
-        style.id = id;
-        document.documentElement.appendChild(style);
-    }
-    style.textContent = 'html, body, #app, .app, .wr_page, .reader, .readerContent, .readerChapterContent { background: transparent !important; background-color: transparent !important; }';
-})();
-)JS";
 const wchar_t kRemoveTransparentBackgroundScript[] = LR"JS(
 (() => {
     const style = document.getElementById('rish-webview-transparent-bg');
@@ -196,6 +197,17 @@ struct WebViewSessionState
 
 class EmbeddedWereadView;
 EmbeddedWereadView* GetView(HWND hParent, bool create);
+
+enum DragStripCommand
+{
+    DragStripCommandNone = 0,
+    DragStripCommandBack = 1,
+    DragStripCommandForward = 2,
+    DragStripCommandRefresh = 3
+};
+
+BOOL IsDragStripNavigationCommandEnabled(HWND hWnd, DragStripCommand command);
+void ExecuteDragStripNavigationCommand(HWND hWnd, DragStripCommand command);
 
 RECT g_deleteRects[MAX_ONLINE_STORE_COUNT] = {0};
 BOOL g_deleteRectValid[MAX_ONLINE_STORE_COUNT] = {0};
@@ -679,12 +691,41 @@ void BeginParentDrag(HWND hWnd)
     SendMessage(hParent, WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(pt.x, pt.y));
 }
 
+BOOL IsDragStripParentBorderless(HWND hWnd)
+{
+    HWND hParent = GetParent(hWnd);
+    LONG_PTR style;
+
+    if (!hParent || !IsWereadDragStripEnabled(hParent))
+        return FALSE;
+
+    style = GetWindowLongPtr(hParent, GWL_STYLE);
+    return (style & WS_CAPTION) == 0;
+}
+
 enum DragStripState
 {
     DragStripHovered = 0x01,
     DragStripPressed = 0x02,
     DragStripTracking = 0x04,
-    DragStripDarkBackground = 0x08
+    DragStripDarkBackground = 0x08,
+    DragStripCanGoBack = 0x10,
+    DragStripCanGoForward = 0x20,
+    DragStripCanRefresh = 0x40
+};
+
+const UINT kDragStripHoverCommandMask = 0x00000F00;
+const UINT kDragStripPressedCommandMask = 0x0000F000;
+const int kDragStripHoverCommandShift = 8;
+const int kDragStripPressedCommandShift = 12;
+const UINT kDragStripNavigationMask = DragStripCanGoBack | DragStripCanGoForward | DragStripCanRefresh;
+const UINT kDragStripTransientStateMask = DragStripHovered | DragStripPressed | DragStripTracking | kDragStripHoverCommandMask | kDragStripPressedCommandMask;
+
+struct DragStripLayout
+{
+    RECT client;
+    RECT buttons[4];
+    BOOL showButtons;
 };
 
 UINT GetDragStripState(HWND hWnd)
@@ -692,14 +733,56 @@ UINT GetDragStripState(HWND hWnd)
     return (UINT)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 }
 
+void SetDragStripState(HWND hWnd, UINT state);
+
+DragStripCommand GetDragStripCommandFromState(UINT state, UINT mask, int shift)
+{
+    return (DragStripCommand)((state & mask) >> shift);
+}
+
+UINT SetDragStripCommandInState(UINT state, UINT mask, int shift, DragStripCommand command)
+{
+    state &= ~mask;
+    state |= ((UINT)command << shift) & mask;
+    return state;
+}
+
+BOOL IsDragStripCommandEnabledInState(UINT state, DragStripCommand command)
+{
+    switch (command)
+    {
+    case DragStripCommandBack:
+        return (state & DragStripCanGoBack) != 0;
+    case DragStripCommandForward:
+        return (state & DragStripCanGoForward) != 0;
+    case DragStripCommandRefresh:
+        return (state & DragStripCanRefresh) != 0;
+    default:
+        return FALSE;
+    }
+}
+
 BYTE GetDragStripAlpha(UINT state)
 {
     bool darkBackground = (state & DragStripDarkBackground) != 0;
+    bool hasNavigation = (state & kDragStripNavigationMask) != 0;
 
-    if (state & DragStripPressed)
+    if ((state & DragStripPressed)
+        || GetDragStripCommandFromState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift) != DragStripCommandNone)
+    {
+        if (hasNavigation)
+            return darkBackground ? kNavControlsDarkPressedAlpha : kNavControlsPressedAlpha;
         return darkBackground ? kDragHandleDarkPressedAlpha : kDragHandlePressedAlpha;
-    if (state & DragStripHovered)
+    }
+    if ((state & DragStripHovered)
+        || GetDragStripCommandFromState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift) != DragStripCommandNone)
+    {
+        if (hasNavigation)
+            return darkBackground ? kNavControlsDarkHoverAlpha : kNavControlsHoverAlpha;
         return darkBackground ? kDragHandleDarkHoverAlpha : kDragHandleHoverAlpha;
+    }
+    if (hasNavigation)
+        return darkBackground ? kNavControlsDarkDefaultAlpha : kNavControlsDefaultAlpha;
     return darkBackground ? kDragHandleDarkDefaultAlpha : kDragHandleDefaultAlpha;
 }
 
@@ -714,11 +797,290 @@ void SetDragStripState(HWND hWnd, UINT state)
     InvalidateRect(hWnd, NULL, FALSE);
 }
 
+const wchar_t* GetDragStripCommandTooltip(DragStripCommand command)
+{
+    switch (command)
+    {
+    case DragStripCommandBack:
+        return kNavBackTooltip;
+    case DragStripCommandForward:
+        return kNavForwardTooltip;
+    case DragStripCommandRefresh:
+        return kNavRefreshTooltip;
+    default:
+        return L"";
+    }
+}
+
+void DrawFilledArrowIcon(HDC hdc, const RECT& button, COLORREF color, bool forward)
+{
+    int buttonWidth = button.right - button.left;
+    int buttonHeight = button.bottom - button.top;
+    int iconWidth = GetWidthForDpi(kNavArrowIconWidth);
+    int iconHeight = GetHeightForDpi(kNavArrowIconHeight);
+    int headWidth = GetWidthForDpi(kNavArrowHeadWidth);
+    int shaftHeight = GetHeightForDpi(kNavArrowShaftHeight);
+    int maxWidth = buttonWidth - GetWidthForDpi(6);
+    int maxHeight = buttonHeight - GetHeightForDpi(6);
+    int xLeft;
+    int xRight;
+    int yTop;
+    int yBottom;
+    int shaftTop;
+    int shaftBottom;
+    int centerX;
+    int centerY;
+    POINT points[7];
+    HBRUSH brush;
+    HGDIOBJ oldBrush;
+    HGDIOBJ oldPen;
+
+    if (maxWidth < 4 || maxHeight < 4)
+        return;
+
+    if (iconWidth > maxWidth)
+        iconWidth = maxWidth;
+    if (iconHeight > maxHeight)
+        iconHeight = maxHeight;
+    if (headWidth > iconWidth - 2)
+        headWidth = iconWidth - 2;
+    if (shaftHeight < 2)
+        shaftHeight = 2;
+    if (shaftHeight > iconHeight - 2)
+        shaftHeight = iconHeight - 2;
+
+    centerX = (button.left + button.right) / 2;
+    centerY = (button.top + button.bottom) / 2;
+    xLeft = centerX - iconWidth / 2;
+    xRight = xLeft + iconWidth;
+    yTop = centerY - iconHeight / 2;
+    yBottom = yTop + iconHeight;
+    shaftTop = centerY - shaftHeight / 2;
+    shaftBottom = shaftTop + shaftHeight;
+
+    if (forward)
+    {
+        points[0] = {xRight, centerY};
+        points[1] = {xRight - headWidth, yTop};
+        points[2] = {xRight - headWidth, shaftTop};
+        points[3] = {xLeft, shaftTop};
+        points[4] = {xLeft, shaftBottom};
+        points[5] = {xRight - headWidth, shaftBottom};
+        points[6] = {xRight - headWidth, yBottom};
+    }
+    else
+    {
+        points[0] = {xLeft, centerY};
+        points[1] = {xLeft + headWidth, yTop};
+        points[2] = {xLeft + headWidth, shaftTop};
+        points[3] = {xRight, shaftTop};
+        points[4] = {xRight, shaftBottom};
+        points[5] = {xLeft + headWidth, shaftBottom};
+        points[6] = {xLeft + headWidth, yBottom};
+    }
+
+    brush = CreateSolidBrush(color);
+    oldBrush = SelectObject(hdc, brush);
+    oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
+    Polygon(hdc, points, ARRAYSIZE(points));
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(brush);
+}
+
+void DrawRefreshIcon(HDC hdc, const RECT& button, COLORREF color)
+{
+    HFONT iconFont;
+    HFONT oldFont;
+    LOGFONTW logFont = {0};
+    RECT iconRect = button;
+
+    logFont.lfHeight = -GetHeightForDpi(kNavRefreshIconFontSize);
+    logFont.lfWeight = FW_NORMAL;
+    StringCchCopyW(logFont.lfFaceName, ARRAYSIZE(logFont.lfFaceName), L"Segoe MDL2 Assets");
+    iconFont = CreateFontIndirectW(&logFont);
+    oldFont = iconFont ? (HFONT)SelectObject(hdc, iconFont) : NULL;
+
+    SetTextColor(hdc, color);
+    DrawTextW(hdc, L"\xE72C", -1, &iconRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+    if (oldFont)
+        SelectObject(hdc, oldFont);
+    if (iconFont)
+        DeleteObject(iconFont);
+}
+
+void DrawDragStripNavigationIcon(HDC hdc, const RECT& button, DragStripCommand command, COLORREF color)
+{
+    switch (command)
+    {
+    case DragStripCommandBack:
+        DrawFilledArrowIcon(hdc, button, color, false);
+        break;
+    case DragStripCommandForward:
+        DrawFilledArrowIcon(hdc, button, color, true);
+        break;
+    case DragStripCommandRefresh:
+        DrawRefreshIcon(hdc, button, color);
+        break;
+    default:
+        break;
+    }
+}
+
+void CalculateDragStripLayout(HWND hWnd, UINT state, DragStripLayout* layout)
+{
+    int width;
+    int height;
+    int buttonSize;
+    int buttonGap;
+    int rightPadding;
+    int buttonGroupWidth;
+    int x;
+    int y;
+
+    UNREFERENCED_PARAMETER(state);
+
+    if (!layout)
+        return;
+
+    ZeroMemory(layout, sizeof(*layout));
+    if (!GetClientRect(hWnd, &layout->client))
+        return;
+
+    width = layout->client.right - layout->client.left;
+    height = layout->client.bottom - layout->client.top;
+    if (width <= 0 || height <= 0)
+        return;
+
+    buttonSize = GetWidthForDpi(kNavButtonSize);
+    if (buttonSize > height)
+        buttonSize = height;
+    if (buttonSize < GetWidthForDpi(16))
+        buttonSize = GetWidthForDpi(16);
+
+    buttonGap = GetWidthForDpi(kNavButtonGap);
+    rightPadding = GetWidthForDpi(kNavButtonRightPadding);
+    buttonGroupWidth = buttonSize * 3 + buttonGap * 2;
+
+    layout->showButtons = buttonGroupWidth + rightPadding <= width;
+    if (!layout->showButtons)
+        return;
+
+    x = width - rightPadding - buttonGroupWidth;
+    y = (height - buttonSize) / 2;
+    if (y < 0)
+        y = 0;
+
+    for (int i = DragStripCommandBack; i <= DragStripCommandRefresh; i++)
+    {
+        layout->buttons[i].left = x;
+        layout->buttons[i].top = y;
+        layout->buttons[i].right = x + buttonSize;
+        layout->buttons[i].bottom = y + buttonSize;
+        x += buttonSize + buttonGap;
+    }
+}
+
+DragStripCommand HitTestDragStripCommand(HWND hWnd, POINT pt)
+{
+    DragStripLayout layout;
+    CalculateDragStripLayout(hWnd, GetDragStripState(hWnd), &layout);
+    if (!layout.showButtons)
+        return DragStripCommandNone;
+
+    for (int i = DragStripCommandBack; i <= DragStripCommandRefresh; i++)
+    {
+        if (PtInRect(&layout.buttons[i], pt))
+            return (DragStripCommand)i;
+    }
+    return DragStripCommandNone;
+}
+
+HWND GetDragStripTooltip(HWND hWnd)
+{
+    return (HWND)GetPropW(hWnd, kDragStripTooltipProp);
+}
+
+void AddDragStripTooltipTool(HWND hWnd, HWND hTooltip, DragStripCommand command)
+{
+    TOOLINFOW tool = {0};
+    tool.cbSize = sizeof(tool);
+    tool.uFlags = TTF_SUBCLASS;
+    tool.hwnd = hWnd;
+    tool.uId = (UINT_PTR)command;
+    tool.lpszText = (LPWSTR)GetDragStripCommandTooltip(command);
+    SetRectEmpty(&tool.rect);
+    SendMessageW(hTooltip, TTM_ADDTOOLW, 0, (LPARAM)&tool);
+}
+
+void UpdateDragStripTooltipRects(HWND hWnd)
+{
+    HWND hTooltip = GetDragStripTooltip(hWnd);
+    DragStripLayout layout;
+
+    if (!hTooltip)
+        return;
+
+    CalculateDragStripLayout(hWnd, GetDragStripState(hWnd), &layout);
+    for (int i = DragStripCommandBack; i <= DragStripCommandRefresh; i++)
+    {
+        TOOLINFOW tool = {0};
+        tool.cbSize = sizeof(tool);
+        tool.hwnd = hWnd;
+        tool.uId = (UINT_PTR)i;
+        if (layout.showButtons)
+            tool.rect = layout.buttons[i];
+        else
+            SetRectEmpty(&tool.rect);
+        SendMessageW(hTooltip, TTM_NEWTOOLRECTW, 0, (LPARAM)&tool);
+    }
+}
+
+void EnsureDragStripTooltip(HWND hWnd)
+{
+    HWND hTooltip = GetDragStripTooltip(hWnd);
+    if (hTooltip && IsWindow(hTooltip))
+        return;
+
+    hTooltip = CreateWindowExW(
+        WS_EX_TOPMOST,
+        TOOLTIPS_CLASSW,
+        NULL,
+        WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        hWnd,
+        NULL,
+        GetModuleHandle(NULL),
+        NULL);
+    if (!hTooltip)
+        return;
+
+    SetPropW(hWnd, kDragStripTooltipProp, hTooltip);
+    SendMessageW(hTooltip, TTM_SETDELAYTIME, TTDT_INITIAL, MAKELPARAM(500, 0));
+    AddDragStripTooltipTool(hWnd, hTooltip, DragStripCommandBack);
+    AddDragStripTooltipTool(hWnd, hTooltip, DragStripCommandForward);
+    AddDragStripTooltipTool(hWnd, hTooltip, DragStripCommandRefresh);
+    UpdateDragStripTooltipRects(hWnd);
+}
+
+void DestroyDragStripTooltip(HWND hWnd)
+{
+    HWND hTooltip = GetDragStripTooltip(hWnd);
+    if (hTooltip && IsWindow(hTooltip))
+        DestroyWindow(hTooltip);
+    RemovePropW(hWnd, kDragStripTooltipProp);
+}
+
 void RestoreDragStripStateAfterDrag(HWND hWnd)
 {
     POINT pt;
     RECT rc;
-    UINT state = GetDragStripState(hWnd) & ~(DragStripHovered | DragStripPressed | DragStripTracking);
+    UINT state = GetDragStripState(hWnd)
+        & ~(DragStripHovered | DragStripPressed | DragStripTracking | kDragStripHoverCommandMask | kDragStripPressedCommandMask);
 
     if (GetCursorPos(&pt) && ScreenToClient(hWnd, &pt) && GetClientRect(hWnd, &rc) && PtInRect(&rc, pt))
     {
@@ -741,72 +1103,83 @@ void ToggleParentMaximized(HWND hWnd)
 
 void PaintDragStrip(HWND hWnd, HDC hdc)
 {
-    RECT rc;
-    RECT parentRc;
+    DragStripLayout layout;
     HBRUSH backgroundBrush;
-    HBRUSH handleBrush;
+    HBRUSH hoverBrush = NULL;
     HGDIOBJ oldBrush;
     HGDIOBJ oldPen;
     UINT state = GetDragStripState(hWnd);
-    COLORREF handleColor = (state & DragStripDarkBackground) ? kDragHandleDarkColor : RGB(0, 0, 0);
-    int parentWidth;
-    int handleWidth;
-    int handleHeight;
+    DragStripCommand hoveredCommand = GetDragStripCommandFromState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift);
+    COLORREF buttonColor = (state & DragStripDarkBackground) ? RGB(224, 226, 230) : RGB(24, 28, 36);
+    COLORREF disabledColor = (state & DragStripDarkBackground) ? RGB(150, 152, 156) : RGB(118, 122, 128);
+    COLORREF hoverFillColor = (state & DragStripDarkBackground) ? RGB(255, 255, 255) : RGB(0, 0, 0);
     int radius;
 
-    GetClientRect(hWnd, &rc);
     backgroundBrush = CreateSolidBrush(kDragStripColorKey);
-    FillRect(hdc, &rc, backgroundBrush);
+    GetClientRect(hWnd, &layout.client);
+    FillRect(hdc, &layout.client, backgroundBrush);
     DeleteObject(backgroundBrush);
 
-    if (!GetClientRect(GetParent(hWnd), &parentRc))
-        return;
+    if (buttonColor == kDragStripColorKey)
+        buttonColor ^= 1;
+    if (disabledColor == kDragStripColorKey)
+        disabledColor ^= 1;
+    if (hoverFillColor == kDragStripColorKey)
+        hoverFillColor ^= 1;
 
-    parentWidth = parentRc.right - parentRc.left;
-    if (parentWidth < GetWidthForDpi(kDragHandleHiddenThreshold))
-        return;
-
-    handleWidth = parentWidth < GetWidthForDpi(kDragHandleCompactThreshold)
-        ? GetWidthForDpi(kDragHandleCompactWidth)
-        : GetWidthForDpi(kDragHandleWidth);
-    if (state & (DragStripHovered | DragStripPressed))
-        handleWidth = GetWidthForDpi(kDragHandleHoverWidth);
-
-    handleHeight = GetHeightForDpi(kDragHandleHeight);
-    if (handleHeight < 1)
-        handleHeight = 1;
-    if (handleWidth > rc.right - rc.left)
-        handleWidth = rc.right - rc.left;
-
-    rc.left = (rc.right - handleWidth) / 2;
-    rc.right = rc.left + handleWidth;
-    rc.top = (rc.bottom - handleHeight) / 2;
-    rc.bottom = rc.top + handleHeight;
-    radius = handleHeight;
-
-    if (handleColor == kDragStripColorKey)
-        handleColor ^= 1;
-    handleBrush = CreateSolidBrush(handleColor);
-    oldBrush = SelectObject(hdc, handleBrush);
+    CalculateDragStripLayout(hWnd, state, &layout);
     oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
-    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius, radius);
+    SetBkMode(hdc, TRANSPARENT);
+
+    if (layout.showButtons)
+    {
+        hoverBrush = CreateSolidBrush(hoverFillColor);
+        for (int i = DragStripCommandBack; i <= DragStripCommandRefresh; i++)
+        {
+            DragStripCommand command = (DragStripCommand)i;
+            BOOL enabled = IsDragStripCommandEnabledInState(state, command);
+            RECT button = layout.buttons[i];
+
+            if (enabled && hoveredCommand == command && hoverBrush)
+            {
+                radius = GetWidthForDpi(kNavButtonCornerRadius);
+                oldBrush = SelectObject(hdc, hoverBrush);
+                RoundRect(hdc, button.left, button.top, button.right, button.bottom, radius, radius);
+                SelectObject(hdc, oldBrush);
+            }
+
+            DrawDragStripNavigationIcon(hdc, button, command, enabled ? buttonColor : disabledColor);
+        }
+        if (hoverBrush)
+            DeleteObject(hoverBrush);
+    }
+
     SelectObject(hdc, oldPen);
-    SelectObject(hdc, oldBrush);
-    DeleteObject(handleBrush);
 }
 
 LRESULT CALLBACK DragStripProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     UINT state;
+    POINT pt;
+    DragStripCommand command;
+    DragStripCommand pressedCommand;
 
     switch (message)
     {
     case WM_NCHITTEST:
         return HTCLIENT;
+    case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
     case WM_SETCURSOR:
-        SetCursor(LoadCursor(NULL, IDC_ARROW));
+        GetCursorPos(&pt);
+        ScreenToClient(hWnd, &pt);
+        SetCursor(LoadCursor(NULL, HitTestDragStripCommand(hWnd, pt) == DragStripCommandNone && IsDragStripParentBorderless(hWnd) ? IDC_SIZEALL : IDC_ARROW));
         return TRUE;
     case WM_MOUSEMOVE:
+        pt.x = (short)LOWORD(lParam);
+        pt.y = (short)HIWORD(lParam);
+        command = HitTestDragStripCommand(hWnd, pt);
+        SetCursor(LoadCursor(NULL, command == DragStripCommandNone && IsDragStripParentBorderless(hWnd) ? IDC_SIZEALL : IDC_ARROW));
         state = GetDragStripState(hWnd);
         if (!(state & DragStripTracking))
         {
@@ -814,23 +1187,83 @@ LRESULT CALLBACK DragStripProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lP
             TrackMouseEvent(&tracking);
             state |= DragStripTracking;
         }
-        if (!(state & DragStripHovered))
-            SetDragStripState(hWnd, state | DragStripHovered);
+        state &= ~(DragStripHovered | kDragStripHoverCommandMask);
+        if (command != DragStripCommandNone && IsDragStripNavigationCommandEnabled(hWnd, command))
+            state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, command);
+        else if (command == DragStripCommandNone)
+            state |= DragStripHovered;
+        SetDragStripState(hWnd, state);
         return 0;
     case WM_MOUSELEAVE:
         state = GetDragStripState(hWnd);
-        SetDragStripState(hWnd, state & ~(DragStripHovered | DragStripTracking));
+        SetDragStripState(hWnd, state & ~(DragStripHovered | DragStripTracking | kDragStripHoverCommandMask));
         return 0;
     case WM_LBUTTONDOWN:
+        pt.x = (short)LOWORD(lParam);
+        pt.y = (short)HIWORD(lParam);
+        command = HitTestDragStripCommand(hWnd, pt);
+        if (command != DragStripCommandNone)
+        {
+            if (IsDragStripNavigationCommandEnabled(hWnd, command))
+            {
+                state = GetDragStripState(hWnd);
+                state = SetDragStripCommandInState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift, command);
+                state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, command);
+                SetCapture(hWnd);
+                SetDragStripState(hWnd, state);
+                UpdateWindow(hWnd);
+            }
+            return 0;
+        }
+
+        if (!IsDragStripParentBorderless(hWnd))
+            return 0;
+
         state = GetDragStripState(hWnd) | DragStripHovered | DragStripPressed;
+        state = SetDragStripCommandInState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift, DragStripCommandNone);
+        state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, DragStripCommandNone);
         SetDragStripState(hWnd, state);
         UpdateWindow(hWnd);
         BeginParentDrag(hWnd);
         RestoreDragStripStateAfterDrag(hWnd);
         return 0;
+    case WM_LBUTTONUP:
+        state = GetDragStripState(hWnd);
+        pressedCommand = GetDragStripCommandFromState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift);
+        if (pressedCommand != DragStripCommandNone)
+        {
+            pt.x = (short)LOWORD(lParam);
+            pt.y = (short)HIWORD(lParam);
+            command = HitTestDragStripCommand(hWnd, pt);
+            if (GetCapture() == hWnd)
+                ReleaseCapture();
+            state = SetDragStripCommandInState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift, DragStripCommandNone);
+            state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, DragStripCommandNone);
+            state &= ~DragStripPressed;
+            if (command == pressedCommand && IsDragStripNavigationCommandEnabled(hWnd, pressedCommand))
+            {
+                state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, pressedCommand);
+                SetDragStripState(hWnd, state);
+                ExecuteDragStripNavigationCommand(hWnd, pressedCommand);
+            }
+            else
+            {
+                SetDragStripState(hWnd, state);
+            }
+            return 0;
+        }
+        break;
     case WM_LBUTTONDBLCLK:
-        ToggleParentMaximized(hWnd);
+        pt.x = (short)LOWORD(lParam);
+        pt.y = (short)HIWORD(lParam);
+        if (HitTestDragStripCommand(hWnd, pt) != DragStripCommandNone)
+            return 0;
+        if (IsDragStripParentBorderless(hWnd))
+            ToggleParentMaximized(hWnd);
         return 0;
+    case WM_DESTROY:
+        DestroyDragStripTooltip(hWnd);
+        break;
     case WM_ERASEBKGND:
         return TRUE;
     case WM_PAINT:
@@ -978,6 +1411,7 @@ public:
         {
             RECT controllerBounds = GetControllerBounds();
             m_controller->put_Bounds(controllerBounds);
+            m_controller->NotifyParentWindowPositionChanged();
             ApplyPageScrollbarScript();
         }
 
@@ -987,13 +1421,72 @@ public:
     void Reload()
     {
         if (m_webView)
+        {
             m_webView->Reload();
+            UpdateNavigationState();
+        }
+    }
+
+    BOOL IsNavigationCommandEnabled(DragStripCommand command) const
+    {
+        switch (command)
+        {
+        case DragStripCommandBack:
+            return m_webView && m_canGoBack;
+        case DragStripCommandForward:
+            return m_webView && m_canGoForward;
+        case DragStripCommandRefresh:
+            return m_webView != nullptr;
+        default:
+            return FALSE;
+        }
+    }
+
+    void ExecuteNavigationCommand(DragStripCommand command)
+    {
+        if (!m_webView)
+            return;
+
+        UpdateNavigationState();
+        switch (command)
+        {
+        case DragStripCommandBack:
+            if (m_canGoBack)
+                m_webView->GoBack();
+            break;
+        case DragStripCommandForward:
+            if (m_canGoForward)
+                m_webView->GoForward();
+            break;
+        case DragStripCommandRefresh:
+            m_webView->Reload();
+            break;
+        default:
+            break;
+        }
+        UpdateNavigationState();
+    }
+
+    void UpdateNavigationState()
+    {
+        BOOL canGoBack = FALSE;
+        BOOL canGoForward = FALSE;
+
+        if (m_webView)
+        {
+            m_webView->get_CanGoBack(&canGoBack);
+            m_webView->get_CanGoForward(&canGoForward);
+        }
+
+        m_canGoBack = canGoBack ? true : false;
+        m_canGoForward = canGoForward ? true : false;
+        ApplyDragStripState();
     }
 
     void UpdateBackground()
     {
         ApplyControllerBackground();
-        ApplyPageBackgroundScript();
+        RemovePageBackgroundScript();
         ApplyDragStripThemeScript();
         if (m_hDragStrip && IsWindow(m_hDragStrip))
             InvalidateRect(m_hDragStrip, NULL, FALSE);
@@ -1091,11 +1584,13 @@ private:
                                 self->ApplyControllerBackground();
                                 self->RegisterAcceleratorKeyHandler();
                                 self->RegisterNavigationCompletedHandler();
+                                self->RegisterHistoryChangedHandler();
                                 self->RegisterWebMessageHandler();
                                 self->RegisterZoomFactorChangedHandler();
                                 self->Resize(NULL);
                                 self->m_controller->put_IsVisible(self->m_visible);
                                 self->UpdateDragStrip();
+                                self->UpdateNavigationState();
 
                                 if (self->m_webView)
                                     self->NavigateCurrentUrl(false);
@@ -1242,9 +1737,10 @@ private:
                         self->m_pendingFallbackNavigationId = 0;
                         self->CaptureCurrentPageUrl();
                         self->SaveCurrentSessionState(self->m_visible);
-                        self->ApplyPageBackgroundScript();
+                        self->RemovePageBackgroundScript();
                         self->ApplyPageScrollbarScript();
                         self->ApplyDragStripThemeScript();
+                        self->UpdateNavigationState();
                     }
                     else if (self->m_canFallbackToHttp)
                     {
@@ -1252,10 +1748,32 @@ private:
                         self->m_pendingFallbackNavigationId = 0;
                         self->NavigateCurrentUrl(true);
                     }
+                    else
+                    {
+                        self->UpdateNavigationState();
+                    }
 
                     return S_OK;
                 }).Get(),
             &m_navigationCompletedToken);
+    }
+
+    void RegisterHistoryChangedHandler()
+    {
+        HWND hParent = m_hParent;
+        if (!m_webView)
+            return;
+
+        m_webView->add_HistoryChanged(
+            Callback<ICoreWebView2HistoryChangedEventHandler>(
+                [hParent](ICoreWebView2*, IUnknown*) -> HRESULT
+                {
+                    EmbeddedWereadView* self = GetView(hParent, false);
+                    if (self)
+                        self->UpdateNavigationState();
+                    return S_OK;
+                }).Get(),
+            &m_historyChangedToken);
     }
 
     void RegisterWebMessageHandler()
@@ -1319,11 +1837,6 @@ private:
             MB_OK | MB_ICONERROR);
     }
 
-    bool IsTransparentBackgroundEnabled() const
-    {
-        return _header && _header->webview_transparent_bg;
-    }
-
     void ApplyControllerBackground()
     {
         ComPtr<ICoreWebView2Controller2> controller2;
@@ -1332,21 +1845,19 @@ private:
         if (!m_controller || FAILED(m_controller.As(&controller2)) || !controller2)
             return;
 
-        color.A = IsTransparentBackgroundEnabled() ? 0 : 255;
+        color.A = 255;
         color.R = 255;
         color.G = 255;
         color.B = 255;
         controller2->put_DefaultBackgroundColor(color);
     }
 
-    void ApplyPageBackgroundScript()
+    void RemovePageBackgroundScript()
     {
         if (!m_webView)
             return;
 
-        m_webView->ExecuteScript(
-            IsTransparentBackgroundEnabled() ? kTransparentBackgroundScript : kRemoveTransparentBackgroundScript,
-            nullptr);
+        m_webView->ExecuteScript(kRemoveTransparentBackgroundScript, nullptr);
     }
 
     bool ShouldHidePageScrollbars() const
@@ -1452,13 +1963,10 @@ private:
 
     bool ShouldShowDragStrip() const
     {
-        LONG_PTR style;
-
         if (!m_visible || !m_controller || !m_hasBounds || !IsWindow(m_hParent))
             return false;
 
-        style = GetWindowLongPtr(m_hParent, GWL_STYLE);
-        return (style & WS_CAPTION) == 0 && IsWereadDragStripEnabled(m_hParent);
+        return true;
     }
 
     UINT DragStripThemeState() const
@@ -1466,23 +1974,48 @@ private:
         return m_dragStripDarkBackground ? DragStripDarkBackground : 0;
     }
 
-    void SetDragStripDarkBackground(bool darkBackground)
+    UINT DragStripNavigationState() const
+    {
+        UINT state = 0;
+        if (m_canGoBack)
+            state |= DragStripCanGoBack;
+        if (m_canGoForward)
+            state |= DragStripCanGoForward;
+        if (m_webView)
+            state |= DragStripCanRefresh;
+        return state;
+    }
+
+    void ApplyDragStripState()
     {
         UINT state;
+        DragStripCommand hoverCommand;
+        DragStripCommand pressedCommand;
 
-        if (m_dragStripDarkBackground == darkBackground)
-            return;
-
-        m_dragStripDarkBackground = darkBackground;
         if (!m_hDragStrip || !IsWindow(m_hDragStrip))
             return;
 
         state = GetDragStripState(m_hDragStrip);
-        if (darkBackground)
-            state |= DragStripDarkBackground;
-        else
-            state &= ~DragStripDarkBackground;
+        state &= ~(DragStripDarkBackground | kDragStripNavigationMask);
+        state |= DragStripThemeState();
+        state |= DragStripNavigationState();
+        hoverCommand = GetDragStripCommandFromState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift);
+        pressedCommand = GetDragStripCommandFromState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift);
+        if (hoverCommand != DragStripCommandNone && !IsDragStripCommandEnabledInState(state, hoverCommand))
+            state = SetDragStripCommandInState(state, kDragStripHoverCommandMask, kDragStripHoverCommandShift, DragStripCommandNone);
+        if (pressedCommand != DragStripCommandNone && !IsDragStripCommandEnabledInState(state, pressedCommand))
+            state = SetDragStripCommandInState(state, kDragStripPressedCommandMask, kDragStripPressedCommandShift, DragStripCommandNone);
         SetDragStripState(m_hDragStrip, state);
+        UpdateDragStripTooltipRects(m_hDragStrip);
+    }
+
+    void SetDragStripDarkBackground(bool darkBackground)
+    {
+        if (m_dragStripDarkBackground == darkBackground)
+            return;
+
+        m_dragStripDarkBackground = darkBackground;
+        ApplyDragStripState();
     }
 
     void EnsureDragStrip()
@@ -1492,7 +2025,7 @@ private:
 
         RegisterDragStripClass();
         m_hDragStrip = CreateWindowExW(
-            WS_EX_LAYERED,
+            WS_EX_LAYERED | WS_EX_NOACTIVATE,
             kDragStripClass,
             NULL,
             WS_CHILD,
@@ -1507,7 +2040,9 @@ private:
 
         if (m_hDragStrip)
         {
-            SetDragStripState(m_hDragStrip, DragStripThemeState());
+            EnsureDragStripTooltip(m_hDragStrip);
+            SetDragStripState(m_hDragStrip, DragStripThemeState() | DragStripNavigationState());
+            UpdateDragStripTooltipRects(m_hDragStrip);
         }
     }
 
@@ -1524,7 +2059,7 @@ private:
         {
             if (m_hDragStrip && IsWindow(m_hDragStrip))
             {
-                SetDragStripState(m_hDragStrip, DragStripThemeState());
+                SetDragStripState(m_hDragStrip, DragStripThemeState() | DragStripNavigationState());
                 ShowWindow(m_hDragStrip, SW_HIDE);
             }
             return;
@@ -1534,15 +2069,29 @@ private:
         if (!m_hDragStrip)
             return;
 
-        int marginX = GetBorderlessResizeMarginX();
-        int marginY = GetBorderlessResizeMarginY();
+        bool reserveResizeMargin = ShouldReserveResizeMargin();
+        int marginX = reserveResizeMargin ? GetBorderlessResizeMarginX() : 0;
+        int marginY = reserveResizeMargin ? GetBorderlessResizeMarginY() : 0;
         int stripHeight = GetHeightForDpi(kDragStripHeight);
         int x = m_bounds.left + marginX;
         int y = m_bounds.top + marginY;
         int width = m_bounds.right - m_bounds.left - marginX * 2;
         int availableHeight = m_bounds.bottom - y;
+
+        if (!reserveResizeMargin)
+        {
+            int navOnlyWidth = GetWidthForDpi(kNavButtonSize * 3 + kNavButtonGap * 2 + kNavButtonRightPadding);
+            if (navOnlyWidth < width)
+            {
+                x = m_bounds.right - navOnlyWidth;
+                width = navOnlyWidth;
+            }
+        }
+
         if (width <= 0 || availableHeight <= 0)
         {
+            SetDragStripState(m_hDragStrip, DragStripThemeState() | DragStripNavigationState());
+            UpdateDragStripTooltipRects(m_hDragStrip);
             ShowWindow(m_hDragStrip, SW_HIDE);
             return;
         }
@@ -1557,7 +2106,10 @@ private:
             width,
             stripHeight,
             SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        InvalidateRect(m_hDragStrip, NULL, FALSE);
+        SetDragStripState(m_hDragStrip, GetDragStripState(m_hDragStrip) & ~kDragStripTransientStateMask);
+        ApplyDragStripState();
+        UpdateDragStripTooltipRects(m_hDragStrip);
+        RedrawWindow(m_hDragStrip, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
     }
 
 private:
@@ -1569,6 +2121,8 @@ private:
     bool m_hasBounds = false;
     bool m_canFallbackToHttp = false;
     bool m_dragStripDarkBackground = false;
+    bool m_canGoBack = false;
+    bool m_canGoForward = false;
     UINT64 m_pendingFallbackNavigationId = 0;
     RECT m_bounds = {0};
     wchar_t m_currentUrl[MAX_ONLINE_STORE_URL] = {0};
@@ -1578,6 +2132,7 @@ private:
     EventRegistrationToken m_acceleratorKeyToken = {0};
     EventRegistrationToken m_navigationStartingToken = {0};
     EventRegistrationToken m_navigationCompletedToken = {0};
+    EventRegistrationToken m_historyChangedToken = {0};
     EventRegistrationToken m_webMessageReceivedToken = {0};
     EventRegistrationToken m_zoomFactorChangedToken = {0};
     ComPtr<ICoreWebView2Environment> m_environment;
@@ -1599,6 +2154,19 @@ EmbeddedWereadView* GetView(HWND hParent, bool create)
         g_view = new EmbeddedWereadView(hParent);
 
     return g_view;
+}
+
+BOOL IsDragStripNavigationCommandEnabled(HWND hWnd, DragStripCommand command)
+{
+    EmbeddedWereadView* view = GetView(GetParent(hWnd), false);
+    return view ? view->IsNavigationCommandEnabled(command) : FALSE;
+}
+
+void ExecuteDragStripNavigationCommand(HWND hWnd, DragStripCommand command)
+{
+    EmbeddedWereadView* view = GetView(GetParent(hWnd), false);
+    if (view)
+        view->ExecuteNavigationCommand(command);
 }
 }
 

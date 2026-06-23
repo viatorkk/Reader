@@ -979,8 +979,7 @@ public:
         }
         if (opaque_text_transparent_bg && cJSON_IsNumber(opaque_text_transparent_bg))
             data->opaque_text_transparent_bg = opaque_text_transparent_bg->valueint ? 1 : 0;
-        if (webview_transparent_bg && cJSON_IsNumber(webview_transparent_bg))
-            data->webview_transparent_bg = webview_transparent_bg->valueint ? 1 : 0;
+        data->webview_transparent_bg = 0;
         if (meun_font_follow)
             data->meun_font_follow = meun_font_follow->valueint;
         if (wheel_speed)

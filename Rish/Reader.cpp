@@ -100,7 +100,7 @@ static void ApplyWindowTransparency(HWND hWnd)
 
 static BOOL IsOnlineStoreTransparentBackdropVisible(HWND hWnd)
 {
-    return IsWereadWebViewVisible(hWnd) && ((_header && _header->webview_transparent_bg) || _WndInfo.status == ds_borderless);
+    return IsWereadWebViewVisible(hWnd) && _WndInfo.status == ds_borderless;
 }
 
 static void PaintOnlineStoreBackdrop(HWND hWnd, HDC hdc)
@@ -129,7 +129,7 @@ static void UpdateOnlineStoreViewState(HWND hWnd)
         ShowWindow(_hTreeMark, SW_HIDE);
         GetClientRectExceptStatusBar(hWnd, &rc);
         ResizeWereadWebView(hWnd, &rc);
-        if (_header && _header->webview_transparent_bg)
+        if (IsOnlineStoreTransparentBackdropVisible(hWnd))
         {
             Invalidate(hWnd, TRUE, TRUE);
             UpdateWindow(hWnd);
@@ -2515,16 +2515,17 @@ LRESULT OnHideBorder(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
     }
     _Book = pBook;
+
+    SendMessage(hWnd, WM_SETREDRAW, TRUE, 0); // lock redraw
     if (IsWereadWebViewVisible(hWnd))
     {
         RECT rcWeb;
         GetClientRectExceptStatusBar(hWnd, &rcWeb);
         ResizeWereadWebView(hWnd, &rcWeb);
     }
-    
-    SendMessage(hWnd, WM_SETREDRAW, TRUE, 0); // lock redraw
     // repaint for alpha
     Invalidate(hWnd, FALSE, FALSE);
+    RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
     return 0;
 }
 
