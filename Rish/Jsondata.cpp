@@ -3,6 +3,7 @@
 #include "Keyset.h"
 #include "Utils.h"
 #include <stdio.h>
+#include <limits.h>
 
 
 cJSON* cJSON_AddULongToObject(cJSON* const object, const char* const name, const u32 number)
@@ -12,6 +13,26 @@ cJSON* cJSON_AddULongToObject(cJSON* const object, const char* const name, const
     n = *((int*)&number);
     item = cJSON_AddNumberToObject(object, name, n);
     return item;
+}
+
+static void CopyJsonString(wchar_t* destination, size_t destinationCount, cJSON* item)
+{
+    if (!destination || destinationCount == 0 || !cJSON_IsString(item) || !item->valuestring)
+        return;
+
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, item->valuestring, -1,
+        destination, (int)destinationCount) == 0)
+    {
+        destination[0] = L'\0';
+    }
+}
+
+static void CopyJsonString(char* destination, size_t destinationCount, cJSON* item)
+{
+    if (!destination || destinationCount == 0 || !cJSON_IsString(item) || !item->valuestring)
+        return;
+
+    strncpy_s(destination, destinationCount, item->valuestring, _TRUNCATE);
 }
 
 class json_point
@@ -256,8 +277,7 @@ public:
             data->lfQuality = (BYTE)lfQuality->valueint;
         if (lfPitchAndFamily)
             data->lfPitchAndFamily = (BYTE)lfPitchAndFamily->valueint;
-        if (lfFaceName)
-            wcscpy(data->lfFaceName, Utf8ToUtf16(lfFaceName->valuestring));
+        CopyJsonString(data->lfFaceName, ARRAYSIZE(data->lfFaceName), lfFaceName);
     }
 };
 
@@ -285,8 +305,7 @@ public:
             data->enable = enable->valueint;
         if (mode)
             data->mode = mode->valueint;
-        if (file_name)
-            wcscpy(data->file_name, Utf8ToUtf16(file_name->valuestring));
+        CopyJsonString(data->file_name, ARRAYSIZE(data->file_name), file_name);
     }
 };
 
@@ -320,12 +339,9 @@ public:
             data->enable = enable->valueint;
         if (port)
             data->port = port->valueint;
-        if (addr)
-            wcscpy(data->addr, Utf8ToUtf16(addr->valuestring));
-        if (user)
-            wcscpy(data->user, Utf8ToUtf16(user->valuestring));
-        if (pass)
-            wcscpy(data->pass, Utf8ToUtf16(pass->valuestring));
+        CopyJsonString(data->addr, ARRAYSIZE(data->addr), addr);
+        CopyJsonString(data->user, ARRAYSIZE(data->user), user);
+        CopyJsonString(data->pass, ARRAYSIZE(data->pass), pass);
     }
 };
 
@@ -375,10 +391,8 @@ public:
     {
         if (rule)
             data->rule = rule->valueint;
-        if (keyword)
-            wcscpy(data->keyword, Utf8ToUtf16(keyword->valuestring));
-        if (regex)
-            wcscpy(data->regex, Utf8ToUtf16(regex->valuestring));
+        CopyJsonString(data->keyword, ARRAYSIZE(data->keyword), keyword);
+        CopyJsonString(data->regex, ARRAYSIZE(data->regex), regex);
     }
 };
 
@@ -427,8 +441,7 @@ public:
             data->font_color = *((u32*)&font_color->valueint);
         if (bg_color)
             data->bg_color = *((u32*)&bg_color->valueint);
-        if (keyword)
-            wcscpy(data->keyword, Utf8ToUtf16(keyword->valuestring));
+        CopyJsonString(data->keyword, ARRAYSIZE(data->keyword), keyword);
         if (font)
             font->GetData(&(data->font));
     }
@@ -518,54 +531,36 @@ public:
     }
     void GetData(book_source_t* data)
     {
-        if (title)
-            wcscpy(data->title, Utf8ToUtf16(title->valuestring));
-        if (host)
-            strcpy(data->host, host->valuestring);
-        if (query_url)
-            strcpy(data->query_url, query_url->valuestring);
+        CopyJsonString(data->title, ARRAYSIZE(data->title), title);
+        CopyJsonString(data->host, ARRAYSIZE(data->host), host);
+        CopyJsonString(data->query_url, ARRAYSIZE(data->query_url), query_url);
         if (query_method)
             data->query_method = query_method->valueint;
-        if (query_params)
-            strcpy(data->query_params, query_params->valuestring);
+        CopyJsonString(data->query_params, ARRAYSIZE(data->query_params), query_params);
         if (query_charset)
             data->query_charset = query_charset->valueint;
-        if (book_name_xpath)
-            strcpy(data->book_name_xpath, book_name_xpath->valuestring);
-        if (book_mainpage_xpath)
-            strcpy(data->book_mainpage_xpath, book_mainpage_xpath->valuestring);
-        if (book_author_xpath)
-            strcpy(data->book_author_xpath, book_author_xpath->valuestring);
+        CopyJsonString(data->book_name_xpath, ARRAYSIZE(data->book_name_xpath), book_name_xpath);
+        CopyJsonString(data->book_mainpage_xpath, ARRAYSIZE(data->book_mainpage_xpath), book_mainpage_xpath);
+        CopyJsonString(data->book_author_xpath, ARRAYSIZE(data->book_author_xpath), book_author_xpath);
         if (enable_chapter_page)
             data->enable_chapter_page = enable_chapter_page->valueint;
-        if (chapter_page_xpath)
-            strcpy(data->chapter_page_xpath, chapter_page_xpath->valuestring);
-        if (chapter_title_xpath)
-            strcpy(data->chapter_title_xpath, chapter_title_xpath->valuestring);
-        if (chapter_url_xpath)
-            strcpy(data->chapter_url_xpath, chapter_url_xpath->valuestring);
+        CopyJsonString(data->chapter_page_xpath, ARRAYSIZE(data->chapter_page_xpath), chapter_page_xpath);
+        CopyJsonString(data->chapter_title_xpath, ARRAYSIZE(data->chapter_title_xpath), chapter_title_xpath);
+        CopyJsonString(data->chapter_url_xpath, ARRAYSIZE(data->chapter_url_xpath), chapter_url_xpath);
         if (enable_chapter_next)
             data->enable_chapter_next = enable_chapter_next->valueint;
-        if (chapter_next_url_xpath)
-            strcpy(data->chapter_next_url_xpath, chapter_next_url_xpath->valuestring);
-        if (chapter_next_keyword_xpath)
-            strcpy(data->chapter_next_keyword_xpath, chapter_next_keyword_xpath->valuestring);
-        if (chapter_next_keyword)
-            strcpy(data->chapter_next_keyword, chapter_next_keyword->valuestring);
-        if (content_xpath)
-            strcpy(data->content_xpath, content_xpath->valuestring);
+        CopyJsonString(data->chapter_next_url_xpath, ARRAYSIZE(data->chapter_next_url_xpath), chapter_next_url_xpath);
+        CopyJsonString(data->chapter_next_keyword_xpath, ARRAYSIZE(data->chapter_next_keyword_xpath), chapter_next_keyword_xpath);
+        CopyJsonString(data->chapter_next_keyword, ARRAYSIZE(data->chapter_next_keyword), chapter_next_keyword);
+        CopyJsonString(data->content_xpath, ARRAYSIZE(data->content_xpath), content_xpath);
         if (enable_content_next)
             data->enable_content_next = enable_content_next->valueint;
-        if (content_next_url_xpath)
-            strcpy(data->content_next_url_xpath, content_next_url_xpath->valuestring);
-        if (content_next_keyword_xpath)
-            strcpy(data->content_next_keyword_xpath, content_next_keyword_xpath->valuestring);
-        if (content_next_keyword)
-            strcpy(data->content_next_keyword, content_next_keyword->valuestring);
+        CopyJsonString(data->content_next_url_xpath, ARRAYSIZE(data->content_next_url_xpath), content_next_url_xpath);
+        CopyJsonString(data->content_next_keyword_xpath, ARRAYSIZE(data->content_next_keyword_xpath), content_next_keyword_xpath);
+        CopyJsonString(data->content_next_keyword, ARRAYSIZE(data->content_next_keyword), content_next_keyword);
         if (content_filter_type)
             data->content_filter_type = content_filter_type->valueint;
-        if (content_filter_keyword)
-            wcscpy(data->content_filter_keyword, Utf8ToUtf16(content_filter_keyword->valuestring));
+        CopyJsonString(data->content_filter_keyword, ARRAYSIZE(data->content_filter_keyword), content_filter_keyword);
     }
 };
 
@@ -936,8 +931,7 @@ public:
         int i, size;
         cJSON* item;
 
-        if (version)
-            wcscpy(data->version, Utf8ToUtf16(version->valuestring));
+        CopyJsonString(data->version, ARRAYSIZE(data->version), version);
         if (item_count)
             data->item_count = item_count->valueint;
         if (item_id)
@@ -1008,8 +1002,7 @@ public:
             data->blank_lines = blank_lines->valueint;
         if (chapter_page)
             data->chapter_page = chapter_page->valueint;
-        if (ingore_version)
-            wcscpy(data->ingore_version, Utf8ToUtf16(ingore_version->valuestring));
+        CopyJsonString(data->ingore_version, ARRAYSIZE(data->ingore_version), ingore_version);
         if (checkver_time)
             data->checkver_time = *((u32*)&checkver_time->valueint);
 
@@ -1057,6 +1050,10 @@ public:
 #if ENABLE_TAG
         if (tag_count)
             data->tag_count = tag_count->valueint;
+        if (data->tag_count < 0)
+            data->tag_count = 0;
+        if (data->tag_count > MAX_TAG_COUNT)
+            data->tag_count = MAX_TAG_COUNT;
         for (i = 0; i < data->tag_count; i++)
         {
             if (tags[i])
@@ -1074,17 +1071,15 @@ public:
                 item = cJSON_GetArrayItem(online_stores, i);
                 if (item && cJSON_IsString(item) && item->valuestring)
                 {
-                    _tcsncpy_s(data->online_stores[i].url, MAX_ONLINE_STORE_URL, Utf8ToUtf16(item->valuestring), _TRUNCATE);
+                    CopyJsonString(data->online_stores[i].url, ARRAYSIZE(data->online_stores[i].url), item);
                     _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, data->online_stores[i].url, _TRUNCATE);
                 }
                 else if (item && cJSON_IsObject(item))
                 {
                     cJSON* name = cJSON_GetObjectItem(item, "name");
                     cJSON* url = cJSON_GetObjectItem(item, "url");
-                    if (url && url->valuestring)
-                        _tcsncpy_s(data->online_stores[i].url, MAX_ONLINE_STORE_URL, Utf8ToUtf16(url->valuestring), _TRUNCATE);
-                    if (name && name->valuestring)
-                        _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, Utf8ToUtf16(name->valuestring), _TRUNCATE);
+                    CopyJsonString(data->online_stores[i].url, ARRAYSIZE(data->online_stores[i].url), url);
+                    CopyJsonString(data->online_stores[i].name, ARRAYSIZE(data->online_stores[i].name), name);
                     if (!data->online_stores[i].name[0])
                         _tcsncpy_s(data->online_stores[i].name, MAX_ONLINE_STORE_NAME, data->online_stores[i].url, _TRUNCATE);
                 }
@@ -1100,7 +1095,13 @@ public:
         }
 
         if (book_source_count)
+        {
             data->book_source_count = book_source_count->valueint;
+            if (data->book_source_count < 0)
+                data->book_source_count = 0;
+            if (data->book_source_count > MAX_BOOKSRC_COUNT)
+                data->book_source_count = MAX_BOOKSRC_COUNT;
+        }
         for (i = 0; i < data->book_source_count; i++)
         {
             if (book_sources[i])
@@ -1154,10 +1155,15 @@ public:
             data->id = id->valueint;
         if (index)
             data->index = index->valueint;
-        if (file_name)
-            wcscpy(data->file_name, Utf8ToUtf16(file_name->valuestring));
+        CopyJsonString(data->file_name, ARRAYSIZE(data->file_name), file_name);
         if (mark_size)
+        {
             data->mark_size = mark_size->valueint;
+            if (data->mark_size < 0)
+                data->mark_size = 0;
+            if (data->mark_size > MAX_MARK_COUNT)
+                data->mark_size = MAX_MARK_COUNT;
+        }
         if (mark)
         {
             size = cJSON_GetArraySize(mark);
@@ -1222,6 +1228,7 @@ BOOL parser_json(const char* json, header_t* defhdr, void** data, int* size)
     json_header_t* headerobj;
     json_item_t* itemobj;
     item_t* itemdata;
+    const int kMaxCachedItems = 4096;
     int i, offset;
 
     *data = NULL;
@@ -1237,7 +1244,7 @@ BOOL parser_json(const char* json, header_t* defhdr, void** data, int* size)
 
     // parser header
     header = cJSON_GetObjectItem(root, "header");
-    if (!header)
+    if (!cJSON_IsObject(header))
     {
         *size = sizeof(header_t);
         *data = (header_t*)malloc(*size);
@@ -1252,7 +1259,12 @@ BOOL parser_json(const char* json, header_t* defhdr, void** data, int* size)
 
     // parser items
     items = cJSON_GetObjectItem(root, "items");
-    if (!items || cJSON_GetArraySize(items) <= 0 || cJSON_GetArraySize(items) != defhdr->item_count)
+    if (!cJSON_IsArray(items)
+        || defhdr->item_count < 0
+        || defhdr->item_count > kMaxCachedItems
+        || defhdr->item_count > (INT_MAX - (int)sizeof(header_t)) / (int)sizeof(item_t)
+        || cJSON_GetArraySize(items) <= 0
+        || cJSON_GetArraySize(items) != defhdr->item_count)
     {
         defhdr->item_count = 0;
         *size = sizeof(header_t);
@@ -1264,6 +1276,12 @@ BOOL parser_json(const char* json, header_t* defhdr, void** data, int* size)
 
     *size = sizeof(header_t) + (sizeof(item_t) * (defhdr->item_count));
     *data = (header_t*)malloc(*size);
+    if (!*data)
+    {
+        cJSON_Delete(root);
+        *size = 0;
+        return FALSE;
+    }
     memset(*data, 0, *size);
     memcpy(*data, defhdr, sizeof(header_t));
 
@@ -1272,6 +1290,14 @@ BOOL parser_json(const char* json, header_t* defhdr, void** data, int* size)
         offset = sizeof(header_t) + i * sizeof(item_t);
         itemdata = (item_t*)((char*)(*data) + offset);
         item = cJSON_GetArrayItem(items, i);
+        if (!cJSON_IsObject(item))
+        {
+            free(*data);
+            *data = NULL;
+            *size = 0;
+            cJSON_Delete(root);
+            return FALSE;
+        }
         itemobj = new json_item_t(item);
         itemobj->GetData(itemdata);
         delete itemobj;

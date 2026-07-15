@@ -197,6 +197,7 @@ struct WebViewSessionState
 
 class EmbeddedWereadView;
 EmbeddedWereadView* GetView(HWND hParent, bool create);
+static UINT64 g_nextViewGeneration = 0;
 
 enum DragStripCommand
 {
@@ -214,7 +215,7 @@ BOOL g_deleteRectValid[MAX_ONLINE_STORE_COUNT] = {0};
 HMENU g_onlineStoreMenu = NULL;
 int g_onlineStoreMenuPositions[MAX_ONLINE_STORE_COUNT] = {0};
 const DWORD kWebViewStateMagic = 0x57565253;
-const DWORD kWebViewStateVersion = 2;
+const DWORD kWebViewStateVersion = 3;
 const double kDefaultZoomFactor = 1.0;
 const double kMinZoomFactor = 0.25;
 const double kMaxZoomFactor = 5.0;
@@ -225,6 +226,8 @@ double NormalizeZoomFactor(double zoomFactor)
         return kDefaultZoomFactor;
     return zoomFactor;
 }
+
+bool BuildPersistedUrl(const wchar_t* url, wchar_t* buffer, size_t cchBuffer);
 
 bool IsWereadUrl(const wchar_t* url)
 {
@@ -273,6 +276,7 @@ bool GetWebViewStateFilePath(wchar_t* buffer, size_t cchBuffer)
 void SaveWebViewSessionState(BOOL reopen, const wchar_t* url, double zoomFactor)
 {
     wchar_t fileName[MAX_PATH] = {0};
+    wchar_t persistedUrl[MAX_ONLINE_STORE_URL] = {0};
     WebViewSessionState state = {0};
     HANDLE hFile;
     DWORD bytesWritten = 0;
@@ -280,10 +284,17 @@ void SaveWebViewSessionState(BOOL reopen, const wchar_t* url, double zoomFactor)
     if (!url || !url[0] || !GetWebViewStateFilePath(fileName, ARRAYSIZE(fileName)))
         return;
 
+    if (!BuildPersistedUrl(url, persistedUrl, ARRAYSIZE(persistedUrl)))
+    {
+        // Do not leave a previously stored URL behind when the current page is not safe to persist.
+        DeleteFileW(fileName);
+        return;
+    }
+
     state.magic = kWebViewStateMagic;
     state.version = kWebViewStateVersion;
     state.reopen = reopen;
-    StringCchCopyW(state.url, ARRAYSIZE(state.url), url);
+    StringCchCopyW(state.url, ARRAYSIZE(state.url), persistedUrl);
     state.zoomFactor = NormalizeZoomFactor(zoomFactor);
 
     hFile = CreateFileW(fileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, NULL);
@@ -297,6 +308,7 @@ void SaveWebViewSessionState(BOOL reopen, const wchar_t* url, double zoomFactor)
 bool LoadWebViewSessionState(WebViewSessionState* state)
 {
     wchar_t fileName[MAX_PATH] = {0};
+    wchar_t persistedUrl[MAX_ONLINE_STORE_URL] = {0};
     HANDLE hFile;
     DWORD bytesRead = 0;
 
@@ -330,9 +342,10 @@ bool LoadWebViewSessionState(WebViewSessionState* state)
     else
         state->zoomFactor = NormalizeZoomFactor(state->zoomFactor);
 
-    // WeRead synchronizes reading progress itself, so restart from its home page.
-    if (IsWereadUrl(state->url))
-        StringCchCopyW(state->url, ARRAYSIZE(state->url), kWereadUrl);
+    // Migrate legacy states in memory: retain only an HTTPS origin and never restore query/fragment data.
+    if (!BuildPersistedUrl(state->url, persistedUrl, ARRAYSIZE(persistedUrl)))
+        return false;
+    StringCchCopyW(state->url, ARRAYSIZE(state->url), persistedUrl);
 
     return true;
 }
@@ -375,6 +388,11 @@ bool NormalizeUrl(wchar_t* url, size_t cchUrl)
 bool HasHttpScheme(const wchar_t* url)
 {
     return url && (_wcsnicmp(url, L"http://", 7) == 0 || _wcsnicmp(url, L"https://", 8) == 0);
+}
+
+bool IsHttpsUrl(const wchar_t* url)
+{
+    return url && _wcsnicmp(url, L"https://", 8) == 0;
 }
 
 void CopyTrimmedUrl(const wchar_t* url, wchar_t* buffer, size_t cchBuffer)
@@ -424,7 +442,7 @@ bool IsSameOnlineStoreUrl(const wchar_t* left, const wchar_t* right)
     return false;
 }
 
-bool BuildNavigableUrl(const wchar_t* url, bool useHttpFallback, wchar_t* buffer, size_t cchBuffer)
+bool BuildNavigableUrl(const wchar_t* url, wchar_t* buffer, size_t cchBuffer)
 {
     wchar_t trimmed[MAX_ONLINE_STORE_URL] = {0};
 
@@ -435,7 +453,44 @@ bool BuildNavigableUrl(const wchar_t* url, bool useHttpFallback, wchar_t* buffer
     if (HasHttpScheme(trimmed))
         return SUCCEEDED(StringCchCopyW(buffer, cchBuffer, trimmed));
 
-    return SUCCEEDED(StringCchPrintfW(buffer, cchBuffer, L"%s%s", useHttpFallback ? L"http://" : L"https://", trimmed));
+    return SUCCEEDED(StringCchPrintfW(buffer, cchBuffer, L"https://%s", trimmed));
+}
+
+bool BuildPersistedUrl(const wchar_t* url, wchar_t* buffer, size_t cchBuffer)
+{
+    wchar_t trimmed[MAX_ONLINE_STORE_URL] = {0};
+    const wchar_t* host;
+    const wchar_t* end;
+    const wchar_t* character;
+    size_t hostLength;
+
+    if (!buffer || cchBuffer == 0)
+        return false;
+
+    buffer[0] = L'\0';
+    CopyTrimmedUrl(url, trimmed, ARRAYSIZE(trimmed));
+    if (!HasHttpScheme(trimmed))
+        return false;
+
+    // Legacy state may contain http URLs. Keep the saved state compatible while
+    // always restoring it as HTTPS; explicit HTTP navigation is never inferred.
+    host = trimmed + (IsHttpsUrl(trimmed) ? 8 : 7);
+    end = host;
+    while (*end && *end != L'/' && *end != L'\\' && *end != L'?' && *end != L'#')
+        end++;
+    hostLength = (size_t)(end - host);
+
+    // Persist only an HTTPS origin. Query, fragment, path and user-info may contain sensitive data.
+    if (hostLength == 0)
+        return false;
+
+    for (character = host; character < end; character++)
+    {
+        if (*character == L'@' || *character <= 0x1F || *character == 0x7F)
+            return false;
+    }
+
+    return SUCCEEDED(StringCchPrintfW(buffer, cchBuffer, L"https://%.*s/", (int)hostLength, host));
 }
 
 bool IsDuplicateOnlineStoreUrl(const wchar_t* url)
@@ -957,7 +1012,7 @@ void CalculateDragStripLayout(HWND hWnd, UINT state, DragStripLayout* layout)
     if (buttonSize > height)
         buttonSize = height;
     if (buttonSize < GetWidthForDpi(16))
-        buttonSize = GetWidthForDpi(16);
+        buttonSize = min(GetWidthForDpi(16), height);
 
     buttonGap = GetWidthForDpi(kNavButtonGap);
     rightPadding = GetWidthForDpi(kNavButtonRightPadding);
@@ -1167,7 +1222,12 @@ LRESULT CALLBACK DragStripProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lP
     switch (message)
     {
     case WM_NCHITTEST:
-        return HTCLIENT;
+        pt.x = (short)LOWORD(lParam);
+        pt.y = (short)HIWORD(lParam);
+        ScreenToClient(hWnd, &pt);
+        if (HitTestDragStripCommand(hWnd, pt) != DragStripCommandNone || IsDragStripParentBorderless(hWnd))
+            return HTCLIENT;
+        return HTTRANSPARENT;
     case WM_MOUSEACTIVATE:
         return MA_NOACTIVATE;
     case WM_SETCURSOR:
@@ -1300,7 +1360,7 @@ void RegisterDragStripClass()
 class EmbeddedWereadView
 {
 public:
-    explicit EmbeddedWereadView(HWND hParent) : m_hParent(hParent) { LoadSavedZoomFactor(); }
+    explicit EmbeddedWereadView(HWND hParent) : m_hParent(hParent), m_generation(++g_nextViewGeneration) { LoadSavedZoomFactor(); }
 
     ~EmbeddedWereadView()
     {
@@ -1310,6 +1370,11 @@ public:
     HWND Parent() const
     {
         return m_hParent;
+    }
+
+    BOOL HasGeneration(UINT64 generation) const
+    {
+        return m_generation == generation;
     }
 
     BOOL IsVisible() const
@@ -1356,7 +1421,7 @@ public:
             ApplyPageScrollbarScript();
             SaveCurrentSessionState(TRUE);
             if (!sameUrl && m_webView)
-                NavigateCurrentUrl(false);
+                NavigateCurrentUrl();
             m_controller->put_IsVisible(TRUE);
             Resize(NULL);
             m_controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
@@ -1507,15 +1572,13 @@ private:
             StringCchCopyW(m_lastPageUrl, ARRAYSIZE(m_lastPageUrl), actual);
     }
 
-    void NavigateCurrentUrl(bool useHttpFallback)
+    void NavigateCurrentUrl()
     {
         if (!m_webView)
             return;
-        if (!BuildNavigableUrl(m_currentUrl, useHttpFallback, m_navigationUrl, ARRAYSIZE(m_navigationUrl)))
+        if (!BuildNavigableUrl(m_currentUrl, m_navigationUrl, ARRAYSIZE(m_navigationUrl)))
             return;
 
-        m_pendingFallbackNavigationId = 0;
-        m_canFallbackToHttp = false;
         StringCchCopyW(m_lastPageUrl, ARRAYSIZE(m_lastPageUrl), m_navigationUrl);
         SaveCurrentSessionState(m_visible);
         m_webView->Navigate(m_navigationUrl);
@@ -1540,16 +1603,17 @@ private:
         wchar_t userDataFolder[MAX_PATH] = {0};
         GetUserDataFolder(userDataFolder, ARRAYSIZE(userDataFolder));
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
 
         HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
             NULL,
             userDataFolder,
             NULL,
             Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-                [hParent](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT
+                [hParent, generation](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT
                 {
                     EmbeddedWereadView* self = GetView(hParent, false);
-                    if (!self)
+                    if (!self || !self->HasGeneration(generation))
                         return S_OK;
 
                     if (FAILED(result) || !environment)
@@ -1561,19 +1625,20 @@ private:
                     }
 
                     self->m_environment = environment;
-                    environment->CreateCoreWebView2Controller(
+                    HRESULT controllerHr = environment->CreateCoreWebView2Controller(
                         hParent,
                         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                            [hParent](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT
+                            [hParent, generation](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT
                             {
                                 EmbeddedWereadView* self = GetView(hParent, false);
-                                if (!self)
+                                if (!self || !self->HasGeneration(generation))
                                     return S_OK;
 
                                 self->m_creating = false;
                                 if (FAILED(controllerResult) || !controller)
                                 {
                                     self->m_visible = FALSE;
+                                    self->m_environment.Reset();
                                     self->ShowWebViewError();
                                     return S_OK;
                                 }
@@ -1593,13 +1658,21 @@ private:
                                 self->UpdateNavigationState();
 
                                 if (self->m_webView)
-                                    self->NavigateCurrentUrl(false);
+                                    self->NavigateCurrentUrl();
 
                                 if (self->m_visible)
                                     self->m_controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
 
                                 return S_OK;
                             }).Get());
+
+                    if (FAILED(controllerHr))
+                    {
+                        self->m_creating = false;
+                        self->m_visible = FALSE;
+                        self->m_environment.Reset();
+                        self->ShowWebViewError();
+                    }
 
                     return S_OK;
                 }).Get());
@@ -1615,17 +1688,19 @@ private:
     void RegisterAcceleratorKeyHandler()
     {
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
         if (!m_controller)
             return;
 
         m_controller->add_AcceleratorKeyPressed(
             Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
-                [hParent](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT
+                [hParent, generation](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT
                 {
+                    EmbeddedWereadView* self = GetView(hParent, false);
                     COREWEBVIEW2_KEY_EVENT_KIND kind;
                     UINT key;
 
-                    if (!args)
+                    if (!self || !self->HasGeneration(generation) || !args)
                         return S_OK;
 
                     args->get_KeyEventKind(&kind);
@@ -1649,17 +1724,18 @@ private:
     void RegisterZoomFactorChangedHandler()
     {
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
         if (!m_controller)
             return;
 
         m_controller->add_ZoomFactorChanged(
             Callback<ICoreWebView2ZoomFactorChangedEventHandler>(
-                [hParent](ICoreWebView2Controller*, IUnknown*) -> HRESULT
+                [hParent, generation](ICoreWebView2Controller*, IUnknown*) -> HRESULT
                 {
                     EmbeddedWereadView* self = GetView(hParent, false);
                     double zoomFactor = kDefaultZoomFactor;
 
-                    if (!self || !self->m_controller)
+                    if (!self || !self->HasGeneration(generation) || !self->m_controller)
                         return S_OK;
 
                     if (SUCCEEDED(self->m_controller->get_ZoomFactor(&zoomFactor)))
@@ -1676,77 +1752,29 @@ private:
     void RegisterNavigationCompletedHandler()
     {
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
         if (!m_webView)
             return;
 
-        m_webView->add_NavigationStarting(
-            Callback<ICoreWebView2NavigationStartingEventHandler>(
-                [hParent](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT
-                {
-                    EmbeddedWereadView* self = GetView(hParent, false);
-                    UINT64 navigationId = 0;
-                    LPWSTR uri = NULL;
-
-                    if (!self || !args)
-                        return S_OK;
-
-                    args->get_NavigationId(&navigationId);
-                    args->get_Uri(&uri);
-                    if (!HasHttpScheme(self->m_currentUrl)
-                        && uri
-                        && IsSameOnlineStoreUrl(uri, self->m_currentUrl)
-                        && _wcsnicmp(uri, L"https://", 8) == 0)
-                    {
-                        self->m_canFallbackToHttp = true;
-                        self->m_pendingFallbackNavigationId = navigationId;
-                    }
-                    else
-                    {
-                        self->m_canFallbackToHttp = false;
-                        self->m_pendingFallbackNavigationId = 0;
-                    }
-                    if (uri)
-                        CoTaskMemFree(uri);
-
-                    return S_OK;
-                }).Get(),
-            &m_navigationStartingToken);
-
         m_webView->add_NavigationCompleted(
             Callback<ICoreWebView2NavigationCompletedEventHandler>(
-                [hParent](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT
+                [hParent, generation](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT
                 {
                     EmbeddedWereadView* self = GetView(hParent, false);
                     BOOL isSuccess = TRUE;
-                    UINT64 navigationId = 0;
-
-                    if (!self || !args)
+                    if (!self || !self->HasGeneration(generation) || !args)
                         return S_OK;
 
                     args->get_IsSuccess(&isSuccess);
-                    args->get_NavigationId(&navigationId);
-                    if (self->m_pendingFallbackNavigationId != 0
-                        && navigationId != self->m_pendingFallbackNavigationId)
-                    {
-                        return S_OK;
-                    }
 
                     if (isSuccess)
                     {
-                        self->m_canFallbackToHttp = false;
-                        self->m_pendingFallbackNavigationId = 0;
                         self->CaptureCurrentPageUrl();
                         self->SaveCurrentSessionState(self->m_visible);
                         self->RemovePageBackgroundScript();
                         self->ApplyPageScrollbarScript();
                         self->ApplyDragStripThemeScript();
                         self->UpdateNavigationState();
-                    }
-                    else if (self->m_canFallbackToHttp)
-                    {
-                        self->m_canFallbackToHttp = false;
-                        self->m_pendingFallbackNavigationId = 0;
-                        self->NavigateCurrentUrl(true);
                     }
                     else
                     {
@@ -1761,15 +1789,16 @@ private:
     void RegisterHistoryChangedHandler()
     {
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
         if (!m_webView)
             return;
 
         m_webView->add_HistoryChanged(
             Callback<ICoreWebView2HistoryChangedEventHandler>(
-                [hParent](ICoreWebView2*, IUnknown*) -> HRESULT
+                [hParent, generation](ICoreWebView2*, IUnknown*) -> HRESULT
                 {
                     EmbeddedWereadView* self = GetView(hParent, false);
-                    if (self)
+                    if (self && self->HasGeneration(generation))
                         self->UpdateNavigationState();
                     return S_OK;
                 }).Get(),
@@ -1779,6 +1808,7 @@ private:
     void RegisterWebMessageHandler()
     {
         HWND hParent = m_hParent;
+        UINT64 generation = m_generation;
         ComPtr<ICoreWebView2Settings> settings;
 
         if (!m_webView)
@@ -1789,12 +1819,12 @@ private:
 
         m_webView->add_WebMessageReceived(
             Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-                [hParent](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
+                [hParent, generation](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
                 {
                     EmbeddedWereadView* self = GetView(hParent, false);
                     LPWSTR message = NULL;
 
-                    if (!self || !args)
+                    if (!self || !self->HasGeneration(generation) || !args)
                         return S_OK;
 
                     if (SUCCEEDED(args->TryGetWebMessageAsString(&message)) && message)
@@ -2119,18 +2149,16 @@ private:
     bool m_creating = false;
     bool m_comInitialized = false;
     bool m_hasBounds = false;
-    bool m_canFallbackToHttp = false;
     bool m_dragStripDarkBackground = false;
     bool m_canGoBack = false;
     bool m_canGoForward = false;
-    UINT64 m_pendingFallbackNavigationId = 0;
+    UINT64 m_generation = 0;
     RECT m_bounds = {0};
     wchar_t m_currentUrl[MAX_ONLINE_STORE_URL] = {0};
     wchar_t m_lastPageUrl[MAX_ONLINE_STORE_URL] = {0};
     wchar_t m_navigationUrl[MAX_ONLINE_STORE_URL] = {0};
     double m_zoomFactor = kDefaultZoomFactor;
     EventRegistrationToken m_acceleratorKeyToken = {0};
-    EventRegistrationToken m_navigationStartingToken = {0};
     EventRegistrationToken m_navigationCompletedToken = {0};
     EventRegistrationToken m_historyChangedToken = {0};
     EventRegistrationToken m_webMessageReceivedToken = {0};

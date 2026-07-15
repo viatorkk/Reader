@@ -36,6 +36,7 @@ typedef struct display_set_data_t
 static display_set_data_t _display;
 static LOGFONT *_p_font = NULL;
 static u32 *_p_font_color = NULL;
+static u32 *_p_picker_color = NULL;
 static HCURSOR _hCursor = NULL;
 static BOOL _is_capturing = FALSE;
 
@@ -72,21 +73,23 @@ static void _start_color_picker(HWND hDlg);
 static void _stop_color_picker(HWND hDlg);
 static void _update_bg_rgb(HWND hDlg);
 static void _update_preview(HDC hDC, RECT *rc);
-static void _ensure_min_font_point_size(LOGFONT *font, int point_size);
+static void _ensure_min_font_point_size_tenths(LOGFONT *font, int point_size_tenths);
 
 #define MIN_ALPHA_PERCENT 40
+static const int kTextFontMinPointTenths = 105;    // Chinese No.5 font: 10.5pt
+static const int kChapterFontMinPointTenths = 180;
 
-static void _ensure_min_font_point_size(LOGFONT *font, int point_size)
+static void _ensure_min_font_point_size_tenths(LOGFONT *font, int point_size_tenths)
 {
     HDC hdc = GetDC(NULL);
-    int current_size;
+    int current_size_tenths;
 
     if (!font || !hdc)
         return;
 
-    current_size = abs(MulDiv(font->lfHeight, 72, GetDeviceCaps(hdc, LOGPIXELSY)));
-    if (current_size < point_size)
-        font->lfHeight = -MulDiv(point_size, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+    current_size_tenths = abs(MulDiv(font->lfHeight, 720, GetDeviceCaps(hdc, LOGPIXELSY)));
+    if (current_size_tenths < point_size_tenths)
+        font->lfHeight = -MulDiv(point_size_tenths, GetDeviceCaps(hdc, LOGPIXELSY), 720);
 
     ReleaseDC(NULL, hdc);
 }
@@ -187,6 +190,7 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
     HWND hWnd;
     RECT rc;
     HDC hdc;
+    COLORREF picked_color;
     static RECT preview_rc = {0};
 
     switch (message)
@@ -305,13 +309,32 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
     case WM_LBUTTONDOWN:
         pt.x = LOWORD(lParam);
         pt.y = HIWORD(lParam);
-        hWnd = GetDlgItem(hDlg, IDC_STATIC_PICKER);
         ClientToScreen(hDlg, &pt);
+        _p_picker_color = NULL;
+        hWnd = GetDlgItem(hDlg, IDC_STATIC_PICKER);
         GetWindowRect(hWnd, &rc);
         if (PtInRect(&rc, pt))
         {
-            _start_color_picker(hDlg);
+            _p_picker_color = &_display.bg_color;
         }
+        else
+        {
+            hWnd = GetDlgItem(hDlg, IDC_STATIC_TEXT_FONT_PICKER);
+            GetWindowRect(hWnd, &rc);
+            if (PtInRect(&rc, pt))
+            {
+                _p_picker_color = &_display.font_color;
+            }
+            else
+            {
+                hWnd = GetDlgItem(hDlg, IDC_STATIC_CHAPTER_FONT_PICKER);
+                GetWindowRect(hWnd, &rc);
+                if (IsWindowEnabled(hWnd) && PtInRect(&rc, pt))
+                    _p_picker_color = &_display.font_color_title;
+            }
+        }
+        if (_p_picker_color)
+            _start_color_picker(hDlg);
         break;
     case WM_LBUTTONUP:
         _stop_color_picker(hDlg);
@@ -324,11 +347,16 @@ static INT_PTR CALLBACK DisplaySetDlgProc(HWND hDlg, UINT message, WPARAM wParam
             ClientToScreen(hDlg, &pt);
             hWnd = GetDlgItem(hDlg, IDC_STATIC_PREVIEW);
             hdc = GetDC(NULL);
-            _display.bg_color = GetPixel(hdc, pt.x, pt.y);
+            picked_color = GetPixel(hdc, pt.x, pt.y);
             ReleaseDC(NULL, hdc);
-            UpdateWindow(hWnd);
-            InvalidateRect(hWnd, NULL, FALSE);
-            _update_bg_rgb(hDlg);
+            if (_p_picker_color && picked_color != CLR_INVALID)
+            {
+                *_p_picker_color = picked_color;
+                if (_p_picker_color == &_display.bg_color)
+                    _update_bg_rgb(hDlg);
+                UpdateWindow(hWnd);
+                InvalidateRect(hWnd, NULL, FALSE);
+            }
         }
         break;
     default:
@@ -386,6 +414,7 @@ static void _init_layout_set(HWND hDlg)
 static void _enable_font_set(HWND hDlg, BOOL enable)
 {
     EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_CHAPTER_FONT), enable);
+    EnableWindow(GetDlgItem(hDlg, IDC_STATIC_CHAPTER_FONT_PICKER), enable);
 }
 
 static void _enable_bg_image_set(HWND hDlg, BOOL enable)
@@ -569,9 +598,9 @@ static void _open_fontdlg(HWND hDlg, int id)
         _p_font->lfCharSet = DEFAULT_CHARSET;
     font = *_p_font;
     if (IDC_BUTTON_TEXT_FONT == id)
-        _ensure_min_font_point_size(&font, 16);
+        _ensure_min_font_point_size_tenths(&font, kTextFontMinPointTenths);
     else if (IDC_BUTTON_CHAPTER_FONT == id)
-        _ensure_min_font_point_size(&font, 18);
+        _ensure_min_font_point_size_tenths(&font, kChapterFontMinPointTenths);
 
     // Initialize CHOOSEFONT
     ZeroMemory(&cf, sizeof(cf));
@@ -628,6 +657,7 @@ static void _stop_color_picker(HWND hDlg)
         _is_capturing = FALSE;
         SetCursor(LoadCursor(hInst, IDC_ARROW));
     }
+    _p_picker_color = NULL;
 }
 
 Gdiplus::Bitmap* _load_bg_image(int w, int h)

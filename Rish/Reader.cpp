@@ -2869,7 +2869,11 @@ LRESULT OnDropFiles(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     for (UINT i = 0; i < nFileCount; i++)
     {
-        ::DragQueryFile(hDropInfo, i, szFileName, sizeof(szFileName));
+        UINT cchFileName = ::DragQueryFile(hDropInfo, i, NULL, 0);
+        if (cchFileName == 0 || cchFileName >= ARRAYSIZE(szFileName))
+            continue;
+        if (::DragQueryFile(hDropInfo, i, szFileName, ARRAYSIZE(szFileName)) == 0)
+            continue;
         dwAttribute = ::GetFileAttributes(szFileName);
 
         if (dwAttribute & FILE_ATTRIBUTE_DIRECTORY)
@@ -3103,12 +3107,26 @@ LRESULT OnOpenBookResult(HWND hWnd, BOOL result)
 LRESULT OnCopyData(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     COPYDATASTRUCT *pCopyData = (COPYDATASTRUCT*)lParam;
-    TCHAR fullname[MAX_PATH];
+    TCHAR fullname[MAX_PATH] = {0};
+    TCHAR sourcePath[MAX_PATH] = {0};
+    size_t sourcePathChars;
+
+    if (!pCopyData || !pCopyData->lpData || pCopyData->cbData < sizeof(TCHAR)
+        || (pCopyData->cbData % sizeof(TCHAR)) != 0)
+        return 0;
+
+    sourcePathChars = pCopyData->cbData / sizeof(TCHAR);
+    if (sourcePathChars > ARRAYSIZE(sourcePath))
+        return 0;
+
+    memcpy(sourcePath, pCopyData->lpData, pCopyData->cbData);
+    sourcePath[ARRAYSIZE(sourcePath) - 1] = _T('\0');
 
     switch (pCopyData->dwData)
     {
     case 0: // extern open file
-        GetFullPathName((TCHAR*)pCopyData->lpData, MAX_PATH, fullname, NULL);
+        if (GetFullPathName(sourcePath, ARRAYSIZE(fullname), fullname, NULL) >= ARRAYSIZE(fullname))
+            return 0;
         // check if file vaild
         if (IsVaildFile(NULL, fullname, NULL))
         {

@@ -291,6 +291,8 @@
 #define IDC_EDIT_ONLINE_STORE_URL       1175
 #define IDC_EDIT_ONLINE_STORE_NAME      1176
 #define IDC_CHECK_WEBVIEW_TRANSPARENT_BG 1177
+#define IDC_STATIC_TEXT_FONT_PICKER     1178
+#define IDC_STATIC_CHAPTER_FONT_PICKER  1179
 #define IDM_OPEN                        32771
 #define IDM_DISPLAY                     32772
 #define IDM_DEFAULT                     32781
@@ -316,7 +318,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        151
 #define _APS_NEXT_COMMAND_VALUE         32807
-#define _APS_NEXT_CONTROL_VALUE         1178
+#define _APS_NEXT_CONTROL_VALUE         1180
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

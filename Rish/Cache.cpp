@@ -13,11 +13,28 @@
 
 extern VOID GetCacheVersion(TCHAR *);
 
-static void SetChineseReadingFont(LOGFONT* lf, int pointSize)
+static const int kDefaultTextPointTenths = 105;   // Chinese No.5 font: 10.5pt
+static const int kDefaultTitlePointTenths = 180;
+
+static int GetScreenLogPixelsY(void)
 {
     HDC hdc = GetDC(NULL);
-    int nHeight = -MulDiv(pointSize, GetDeviceCaps(hdc, LOGPIXELSY), 72);
-    ReleaseDC(NULL, hdc);
+    int logPixelsY = hdc ? GetDeviceCaps(hdc, LOGPIXELSY) : 96;
+    if (hdc)
+        ReleaseDC(NULL, hdc);
+    return logPixelsY;
+}
+
+static int GetFontPointTenths(const LOGFONT* lf)
+{
+    if (!lf)
+        return 0;
+    return abs(MulDiv(lf->lfHeight, 720, GetScreenLogPixelsY()));
+}
+
+static void SetChineseReadingFontByPointTenths(LOGFONT* lf, int pointSizeTenths)
+{
+    int nHeight = -MulDiv(pointSizeTenths, GetScreenLogPixelsY(), 720);
     memset(lf, 0, sizeof(LOGFONT));
     lf->lfHeight = nHeight;
     lf->lfWeight = FW_REGULAR;
@@ -27,6 +44,11 @@ static void SetChineseReadingFont(LOGFONT* lf, int pointSize)
     lf->lfQuality = CLEARTYPE_QUALITY;
     lf->lfPitchAndFamily = VARIABLE_PITCH | FF_SWISS;
     _tcscpy_s(lf->lfFaceName, LF_FACESIZE, _T("Microsoft YaHei UI"));
+}
+
+static void SetChineseReadingFont(LOGFONT* lf, int pointSize)
+{
+    SetChineseReadingFontByPointTenths(lf, pointSize * 10);
 }
 
 static BOOL IsLegacyLatinDefaultFont(const LOGFONT* lf)
@@ -43,31 +65,31 @@ static BOOL IsChineseReadingFontAtPointSize(const LOGFONT* lf, int pointSize)
     return memcmp(lf, &expected, sizeof(expected)) == 0;
 }
 
-static BOOL IsChineseReadingFontFamilyAtPointSize(const LOGFONT* lf, int pointSize)
+static BOOL IsChineseReadingFontAtPointTenths(const LOGFONT* lf, int pointSizeTenths)
 {
-    HDC hdc = GetDC(NULL);
-    int currentSize;
+    LOGFONT expected;
+    SetChineseReadingFontByPointTenths(&expected, pointSizeTenths);
+    return memcmp(lf, &expected, sizeof(expected)) == 0;
+}
 
-    if (!lf || !hdc)
+static BOOL IsChineseReadingFontFamilyAtPointTenths(const LOGFONT* lf, int pointSizeTenths)
+{
+    if (!lf)
         return FALSE;
 
-    currentSize = abs(MulDiv(lf->lfHeight, 72, GetDeviceCaps(hdc, LOGPIXELSY)));
-    ReleaseDC(NULL, hdc);
-
-    return currentSize == pointSize
+    return GetFontPointTenths(lf) == pointSizeTenths
         && 0 == _tcsicmp(lf->lfFaceName, _T("Microsoft YaHei UI"));
 }
 
 static void NormalizeChineseFonts(header_t* header)
 {
-    const int TextPointSize = 16;
-    const int TitlePointSize = 18;
-
     if (IsLegacyLatinDefaultFont(&header->font)
         || IsChineseReadingFontAtPointSize(&header->font, 10)
-        || IsChineseReadingFontAtPointSize(&header->font, 12))
+        || IsChineseReadingFontAtPointSize(&header->font, 12)
+        || IsChineseReadingFontAtPointSize(&header->font, 16)
+        || IsChineseReadingFontAtPointTenths(&header->font, kDefaultTextPointTenths))
     {
-        SetChineseReadingFont(&header->font, TextPointSize);
+        SetChineseReadingFontByPointTenths(&header->font, kDefaultTextPointTenths);
     }
     else if (header->font.lfCharSet == ANSI_CHARSET)
     {
@@ -79,7 +101,7 @@ static void NormalizeChineseFonts(header_t* header)
         || IsChineseReadingFontAtPointSize(&header->font_title, 12)
         || IsChineseReadingFontAtPointSize(&header->font_title, 14))
     {
-        SetChineseReadingFont(&header->font_title, TitlePointSize);
+        SetChineseReadingFontByPointTenths(&header->font_title, kDefaultTitlePointTenths);
     }
     else if (header->font_title.lfCharSet == ANSI_CHARSET)
     {
@@ -90,8 +112,8 @@ static void NormalizeChineseFonts(header_t* header)
     // 这里按字体名和字号判断默认字体，不用 memcmp(LOGFONT)，因为字体选择框和 DPI 逻辑
     // 可能只改变 lfQuality、字符集或 lfHeight 的舍入值，但视觉上仍然是同一套默认字体。
     if (header->use_same_font
-        && IsChineseReadingFontFamilyAtPointSize(&header->font, TextPointSize)
-        && IsChineseReadingFontFamilyAtPointSize(&header->font_title, TitlePointSize))
+        && IsChineseReadingFontFamilyAtPointTenths(&header->font, kDefaultTextPointTenths)
+        && IsChineseReadingFontFamilyAtPointTenths(&header->font_title, kDefaultTitlePointTenths))
     {
         header->use_same_font = 0;
     }
@@ -101,9 +123,11 @@ static void NormalizeChineseFonts(header_t* header)
     {
         if (IsLegacyLatinDefaultFont(&header->tags[i].font)
             || IsChineseReadingFontAtPointSize(&header->tags[i].font, 12)
-            || IsChineseReadingFontAtPointSize(&header->tags[i].font, 14))
+            || IsChineseReadingFontAtPointSize(&header->tags[i].font, 14)
+            || IsChineseReadingFontAtPointSize(&header->tags[i].font, 16)
+            || IsChineseReadingFontAtPointTenths(&header->tags[i].font, kDefaultTextPointTenths))
         {
-            SetChineseReadingFont(&header->tags[i].font, TextPointSize);
+            SetChineseReadingFontByPointTenths(&header->tags[i].font, kDefaultTextPointTenths);
         }
         else if (header->tags[i].font.lfCharSet == ANSI_CHARSET)
         {
@@ -118,12 +142,25 @@ Cache::Cache(const TCHAR* file)
     , m_jsonlen(0)
 {
     size_t i;
-    GetModuleFileName(NULL, m_file_name, sizeof(TCHAR)*(MAX_PATH-1));
-    for (i=_tcslen(m_file_name)-1; i>=0; i--)
+    size_t moduleLength;
+    DWORD modulePathLength;
+
+    m_file_name[0] = _T('\0');
+    modulePathLength = GetModuleFileName(NULL, m_file_name, ARRAYSIZE(m_file_name));
+    if (modulePathLength == 0 || modulePathLength >= ARRAYSIZE(m_file_name))
     {
-        if (m_file_name[i] == _T('\\'))
+        m_file_name[0] = _T('\0');
+        m_buffer = NULL;
+        m_size = 0;
+        return;
+    }
+    m_file_name[modulePathLength] = _T('\0');
+    moduleLength = modulePathLength;
+    for (i = moduleLength; i > 0; i--)
+    {
+        if (m_file_name[i - 1] == _T('\\') || m_file_name[i - 1] == _T('/'))
         {
-            memcpy(&m_file_name[i+1], file, (_tcslen(file)+1)*sizeof(TCHAR));
+            _tcsncpy_s(m_file_name + i, ARRAYSIZE(m_file_name) - i, file, _TRUNCATE);
             break;
         }
     }
@@ -144,6 +181,7 @@ Cache::~Cache(void)
 
 BOOL Cache::init()
 {
+    const DWORD kMaxCacheBytes = 16 * 1024 * 1024;
     void* json = NULL;
     int size = 0;
     header_t *header = NULL;
@@ -157,6 +195,11 @@ BOOL Cache::init()
     {
         if (read(&json, &size))
         {
+            if (size <= 0 || (DWORD)size > kMaxCacheBytes)
+            {
+                free(json);
+                return FALSE;
+            }
             // backup file data
             if (m_jsonbak)
             {
@@ -165,24 +208,41 @@ BOOL Cache::init()
             }
             m_jsonlen = size;
             m_jsonbak = malloc(m_jsonlen);
+            if (!m_jsonbak)
+            {
+                free(json);
+                return FALSE;
+            }
             memcpy(m_jsonbak, json, m_jsonlen);
 
             header = (header_t*)malloc(sizeof(header_t));
+            if (!header)
+            {
+                free(json);
+                return FALSE;
+            }
             // parser json string
             decode(json, size);
             memset(header, 0, sizeof(header_t));
             header->item_id = -1;
             default_header(header);
             { // fixed bug
-                json = realloc(json, size+1);
-                if (!json)
+                void* resizedJson = realloc(json, size+1);
+                if (!resizedJson)
                 {
+                    free(json);
                     free(header);
                     return FALSE;
                 }
+                json = resizedJson;
                 ((char*)json)[size] = 0;
             }
-            parser_json((const char *)json, header, &m_buffer, &m_size);
+            if (!parser_json((const char *)json, header, &m_buffer, &m_size))
+            {
+                free(json);
+                free(header);
+                return FALSE;
+            }
             NormalizeChineseFonts(get_header());
             free(json);
             free(header);
@@ -404,12 +464,10 @@ void Cache::default_header(header_t* header)
     // default font
     static LOGFONT lf;
     int i;
-    const int TextPointSize = 16;
-    const int TitlePointSize = 18;
-    SetChineseReadingFont(&lf, TextPointSize);
+    SetChineseReadingFontByPointTenths(&lf, kDefaultTextPointTenths);
     memcpy(&header->font, &lf, sizeof(lf));
     header->font_color = 0x00;      // black
-    SetChineseReadingFont(&lf, TitlePointSize);
+    SetChineseReadingFontByPointTenths(&lf, kDefaultTitlePointTenths);
     memcpy(&header->font_title, &lf, sizeof(lf));
     header->font_color_title = 0x00;  // black
     // 默认让章节字体独立，否则 18 号章节字体会被正文字体覆盖。
@@ -505,7 +563,7 @@ void Cache::default_header(header_t* header)
     }
     // default tags
 #if ENABLE_TAG
-    SetChineseReadingFont(&lf, TextPointSize);
+    SetChineseReadingFontByPointTenths(&lf, kDefaultTextPointTenths);
     for (i = 0; i < MAX_TAG_COUNT; i++)
     {
         if (header->tags[i].font.lfHeight == 0)
@@ -604,6 +662,7 @@ BOOL Cache::move_item(int from, int to)
 
 BOOL Cache::read(void** data, int* size)
 {
+    const DWORD kMaxCacheBytes = 16 * 1024 * 1024;
     HANDLE hFile = NULL;
     BOOL bErrorFlag = FALSE;
     DWORD dwFileSize = 0;
@@ -625,7 +684,7 @@ BOOL Cache::read(void** data, int* size)
     }
 
     dwFileSize = GetFileSize(hFile, NULL);
-    if (INVALID_FILE_SIZE == dwFileSize)
+    if (INVALID_FILE_SIZE == dwFileSize || dwFileSize == 0 || dwFileSize > kMaxCacheBytes)
     {
         CloseHandle(hFile);
         return FALSE;

@@ -31,7 +31,7 @@ void b64_decode(const char *src, int slen, char *dst, int *dlen);
 
 // url
 int url_encode(const char *src, char *dest);
-int url_decode(const char *src, char *dest); 
+int url_decode(const char *src, char *dest, size_t dest_count);
 
 // string
 int strcasecmp(const char *s1, const char *s2);

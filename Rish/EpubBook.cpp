@@ -126,6 +126,9 @@ void EpubBook::FreeFilelist(void)
 #ifdef ZLIB_ENABLE
 BOOL EpubBook::UnzipBook(void)
 {
+    const uLong kMaxEpubEntries = 4096;
+    const ZPOS64_T kMaxEpubEntryBytes = 64ULL * 1024ULL * 1024ULL;
+    const ZPOS64_T kMaxEpubTotalBytes = 256ULL * 1024ULL * 1024ULL;
     unzFile uf = NULL;
     zlib_filefunc64_def ffunc = {0};
     uLong i;
@@ -135,6 +138,7 @@ BOOL EpubBook::UnzipBook(void)
     char filename_inzip[MAX_PATH] = {0};
     char *buf = NULL;
     file_data_t fdata;
+    ZPOS64_T totalUncompressedBytes = 0;
 
     fill_win32_filefunc64W(&ffunc);
     uf = unzOpen2_64(m_fileName, &ffunc);
@@ -144,6 +148,11 @@ BOOL EpubBook::UnzipBook(void)
     err = unzGetGlobalInfo(uf, &gi);
     if (err != UNZ_OK)
         goto end;
+    if (gi.number_entry == 0 || gi.number_entry > kMaxEpubEntries)
+    {
+        err = UNZ_PARAMERROR;
+        goto end;
+    }
 
     FreeFilelist();
 
@@ -151,7 +160,17 @@ BOOL EpubBook::UnzipBook(void)
     {
         // current file
         {
-            err = unzGetCurrentFileInfo64(uf, &file_info, filename_inzip, sizeof(filename_inzip), NULL, 0, NULL, 0);
+            err = unzGetCurrentFileInfo64(uf, &file_info, NULL, 0, NULL, 0, NULL, 0);
+            if (err != UNZ_OK)
+                goto end;
+            if (file_info.size_filename == 0 || file_info.size_filename >= ARRAYSIZE(filename_inzip)
+                || file_info.uncompressed_size > kMaxEpubEntryBytes
+                || totalUncompressedBytes > kMaxEpubTotalBytes - file_info.uncompressed_size)
+            {
+                err = UNZ_PARAMERROR;
+                goto end;
+            }
+            err = unzGetCurrentFileInfo64(uf, &file_info, filename_inzip, ARRAYSIZE(filename_inzip), NULL, 0, NULL, 0);
             if (err != UNZ_OK)
                 goto end;
 
@@ -167,21 +186,29 @@ BOOL EpubBook::UnzipBook(void)
                     goto end;
 
                 // create memory to save this file
-                buf = (char *)malloc((size_t)file_info.uncompressed_size);
+                buf = (char *)malloc((size_t)(file_info.uncompressed_size ? file_info.uncompressed_size : 1));
                 if (!buf)
                     goto end;
 
                 // read file to memory
-                err = unzReadCurrentFile(uf, buf, (unsigned int)file_info.uncompressed_size);
-                if (err != file_info.uncompressed_size)
-                    goto end;
+                if (file_info.uncompressed_size > 0)
+                {
+                    err = unzReadCurrentFile(uf, buf, (unsigned int)file_info.uncompressed_size);
+                    if (err != (int)file_info.uncompressed_size)
+                        goto end;
+                }
                 err = UNZ_OK;
 
                 // save to file map
                 fdata.data = buf;
                 fdata.size = (int)file_info.uncompressed_size;
-                m_flist.insert(std::make_pair(filename_inzip, fdata));
+                if (!m_flist.insert(std::make_pair(filename_inzip, fdata)).second)
+                {
+                    err = UNZ_PARAMERROR;
+                    goto end;
+                }
                 buf = NULL;
+                totalUncompressedBytes += file_info.uncompressed_size;
             }
             unzCloseCurrentFile(uf);
         }
@@ -217,6 +244,9 @@ end:
 #else
 BOOL EpubBook::UnzipBook(void)
 {
+    const mz_uint kMaxEpubEntries = 4096;
+    const mz_uint64 kMaxEpubEntryBytes = 64ULL * 1024ULL * 1024ULL;
+    const mz_uint64 kMaxEpubTotalBytes = 256ULL * 1024ULL * 1024ULL;
     mz_zip_archive zip_archive;
     mz_zip_archive_file_stat file_stat;
     mz_uint file_count = 0;
@@ -226,6 +256,7 @@ BOOL EpubBook::UnzipBook(void)
 #endif
     char *buf = NULL;
     file_data_t fdata;
+    mz_uint64 totalUncompressedBytes = 0;
 
 #if 0
     filename = Utf16ToAnsi(m_fileName);
@@ -239,7 +270,7 @@ BOOL EpubBook::UnzipBook(void)
         return FALSE;
 
     file_count = mz_zip_reader_get_num_files(&zip_archive);
-    if (file_count == 0)
+    if (file_count == 0 || file_count > kMaxEpubEntries)
     {
         mz_zip_reader_end(&zip_archive);
         return FALSE;
@@ -257,9 +288,18 @@ BOOL EpubBook::UnzipBook(void)
             continue;
         if (mz_zip_reader_is_file_a_directory(&zip_archive, i))
             continue; // skip directories for now
+        if (!file_stat.m_filename[0]
+            || file_stat.m_uncomp_size > kMaxEpubEntryBytes
+            || totalUncompressedBytes > kMaxEpubTotalBytes - file_stat.m_uncomp_size)
+        {
+            mz_zip_reader_end(&zip_archive);
+            FreeFilelist();
+            return FALSE;
+        }
 
         // create memory to save this file
-        buf = (char *)malloc((size_t)file_stat.m_uncomp_size);
+        // malloc(0) may return NULL even for a valid empty EPUB resource.
+        buf = (char *)malloc(file_stat.m_uncomp_size ? (size_t)file_stat.m_uncomp_size : 1);
         if (!buf)
         {
             mz_zip_reader_end(&zip_archive);
@@ -279,7 +319,15 @@ BOOL EpubBook::UnzipBook(void)
         // save to file map
         fdata.data = buf;
         fdata.size = (size_t)file_stat.m_uncomp_size;
-        m_flist.insert(std::make_pair(file_stat.m_filename, fdata));
+        if (!m_flist.insert(std::make_pair(file_stat.m_filename, fdata)).second)
+        {
+            free(buf);
+            mz_zip_reader_end(&zip_archive);
+            FreeFilelist();
+            return FALSE;
+        }
+        totalUncompressedBytes += file_stat.m_uncomp_size;
+        buf = NULL;
     }
 
     // Close the archive, freeing any resources it was using
@@ -417,7 +465,7 @@ BOOL EpubBook::ParserOpf(epub_t &epub)
                     }
                     else if (xmlStrcmp(nodeset->nodeTab[i]->name, (const xmlChar *)"href") == 0)
                     {
-                        url_decode((const char *)keyword, buff);
+                        url_decode((const char *)keyword, buff, ARRAYSIZE(buff));
                         item->href = (const char *)buff;
                     }
                     else if (xmlStrcmp(nodeset->nodeTab[i]->name, (const xmlChar *)"media-type") == 0)
@@ -639,7 +687,7 @@ BOOL EpubBook::ParserNcx(epub_t &epub)
             navp->text = (const char *)text;
         if (src)
         {
-            url_decode((const char *)src, buff);
+            url_decode((const char *)src, buff, ARRAYSIZE(buff));
             navp->src = (const char *)buff;
         }
         epub.navpoints.insert(std::make_pair(navp->src, navp));
@@ -947,7 +995,8 @@ BOOL EpubBook::ParserCover(epub_t &epub)
     {
         if (strcasestr(itmfest->first.c_str(), "cover") && strcasestr(itmfest->second->media_type.c_str(), "image/"))
         {
-            strcpy(image_fname, itmfest->second->href.c_str());
+            if (strncpy_s(image_fname, ARRAYSIZE(image_fname), itmfest->second->href.c_str(), _TRUNCATE) != 0)
+                image_fname[0] = '\0';
             goto _complete;
         }
     }
@@ -998,20 +1047,24 @@ _found:
 
                                 if (src)
                                 {
-                                    url_decode((const char *)src, image_fname);
+                                    url_decode((const char *)src, image_fname, ARRAYSIZE(image_fname));
                                     // to absolute path, need to do ...
                                     while (strstr(image_fname, "../") == image_fname)
                                     {
-                                        strncpy(image_fname, image_fname+3, strlen(image_fname)-2);
+                                        size_t imageLength = strlen(image_fname);
+                                        memmove(image_fname, image_fname + 3, imageLength - 2);
+                                        image_fname[imageLength - 3] = '\0';
                                     }
                                 }
                                 else if (href)
                                 {
-                                    url_decode((const char *)href, image_fname);
+                                    url_decode((const char *)href, image_fname, ARRAYSIZE(image_fname));
                                     // to absolute path, need to do ...
                                     while (strstr(image_fname, "../") == image_fname)
                                     {
-                                        strncpy(image_fname, image_fname+3, strlen(image_fname)-2);
+                                        size_t imageLength = strlen(image_fname);
+                                        memmove(image_fname, image_fname + 3, imageLength - 2);
+                                        image_fname[imageLength - 3] = '\0';
                                     }
                                 }
                                 break;

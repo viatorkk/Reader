@@ -388,15 +388,13 @@ int url_encode(const char *src, char *dest)
     return (int)(pbuf - dest);
 }
 
-/*!
-size of dest must have min size of  strlen(src) +1
-*/
-int url_decode(const char *src, char *dest)
+int url_decode(const char *src, char *dest, size_t dest_count)
 {
     const char *pstr = src;
     char *pbuf = dest;
+    char value;
 
-    if (src == NULL || dest == NULL)
+    if (src == NULL || dest == NULL || dest_count == 0)
     {
         return -1;
     }
@@ -406,18 +404,29 @@ int url_decode(const char *src, char *dest)
         {
             if (pstr[1] && pstr[2])
             {
-                *pbuf++ = from_hex(pstr[1]) << 4 | from_hex(pstr[2]);
+                value = (char)(from_hex(pstr[1]) << 4 | from_hex(pstr[2]));
                 pstr += 2;
+            }
+            else
+            {
+                pstr++;
+                continue;
             }
         }
         else if (*pstr == '+')
         {
-            *pbuf++ = ' ';
+            value = ' ';
         }
         else
         {
-            *pbuf++ = *pstr;
+            value = *pstr;
         }
+        if ((size_t)(pbuf - dest) + 1 >= dest_count)
+        {
+            dest[0] = '\0';
+            return -1;
+        }
+        *pbuf++ = value;
         pstr++;
     }
     *pbuf = '\0';
