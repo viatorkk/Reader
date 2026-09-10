@@ -1090,7 +1090,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 #endif
     case WM_OPEN_BOOK:
-        OnOpenBookResult(hWnd, wParam == 1);
+        if (_Book && _Book->GetLoadId() == (ULONG_PTR)lParam)
+            OnOpenBookResult(hWnd, wParam == 1);
         break;
     case WM_COPYDATA:
         OnCopyData(hWnd, message, wParam, lParam);
@@ -3293,6 +3294,7 @@ void OnOpenBook(HWND hWnd, TCHAR *filename, BOOL forced)
     item_t *item = NULL;
     TCHAR *ext = NULL;
     int size = 0;
+    BOOL started = FALSE;
     TCHAR szFileName[MAX_PATH] = {0};
 #ifdef ENABLE_NETWORK
     chkbook_arg_t* arg = NULL;
@@ -3335,13 +3337,13 @@ void OnOpenBook(HWND hWnd, TCHAR *filename, BOOL forced)
         _Book = new TextBook;
         _Book->SetFileName(szFileName);
         _Book->SetChapterRule(&(_header->chapter_rule));
-        _Book->OpenBook(NULL, size, hWnd);
+        started = _Book->OpenBook(NULL, size, hWnd);
     }
     else if (_tcscmp(ext, _T(".epub")) == 0)
     {
         _Book = new EpubBook;
         _Book->SetFileName(szFileName);
-        _Book->OpenBook(hWnd);
+        started = _Book->OpenBook(hWnd);
     }
 #ifdef ENABLE_NETWORK
     else if (_tcscmp(ext, _T(".ol")) == 0)
@@ -3356,12 +3358,14 @@ void OnOpenBook(HWND hWnd, TCHAR *filename, BOOL forced)
         }
         _Book = new OnlineBook;
         _Book->SetFileName(szFileName);
-        _Book->OpenBook(NULL, size, hWnd);
+        started = _Book->OpenBook(NULL, size, hWnd);
     }
 #endif
 
-    //EnableWindow(hWnd, FALSE);
-    PlayLoadingImage(hWnd);
+    if (started)
+        PlayLoadingImage(hWnd);
+    else
+        OnOpenBookResult(hWnd, FALSE);
 }
 
 #ifdef ENABLE_NETWORK

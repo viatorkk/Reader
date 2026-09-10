@@ -880,14 +880,15 @@ BOOL EpubBook::ParserChapters(epub_t &epub)
                         if (itnav != epub.navpoints.end())
                         {
                             DecodeText(itnav->second->text.c_str(), (int)itnav->second->text.size(), &title, &tlen);
-                            chapter.title = title;
+                            chapter.title = title ? title : L"";
                         }
                         else
                         {
-                            chapter.title = title;
+                            chapter.title = title ? title : L"";
                         }
                         if (title)
                             free(title);
+                        title = NULL;
                         chapter.title_len = tlen;
                         if (!chapter.title.empty())
                             m_Chapters.push_back(chapter);

@@ -456,8 +456,8 @@ IDB_PNG_NEW             PNG                     "new.png"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,0,0,5
- PRODUCTVERSION 2,0,0,5
+ FILEVERSION 3,0,0,7
+ PRODUCTVERSION 3,0,0,7
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -474,12 +474,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Author : Binbin Yu"
             VALUE "FileDescription", "A minimalist novel reader"
-            VALUE "FileVersion", "2.0.0.5"
+            VALUE "FileVersion", "3.0.0.7"
             VALUE "InternalName", "Rish.exe"
             VALUE "LegalCopyright", "Copyright (C) 2019-2020"
             VALUE "OriginalFilename", "Rish.exe"
             VALUE "ProductName", "Rish"
-            VALUE "ProductVersion", "2.0.0.5"
+            VALUE "ProductVersion", "3.0.0.7"
         END
     END
     BLOCK "VarFileInfo"

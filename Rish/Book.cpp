@@ -8,11 +8,15 @@
 
 #define MAX_BLANK_LINE      2
 
+static std::atomic<ULONG_PTR> s_NextLoadId(0);
+
 Book::Book()
     : m_Data(NULL)
     , m_Size(0)
     , m_hThread(NULL)
     , m_bForceKill(FALSE)
+    , m_Loading(false)
+    , m_LoadId(0)
     , m_Rule(NULL)
 {
     memset(m_fileName, 0, sizeof(m_fileName));
@@ -32,26 +36,31 @@ BOOL Book::OpenBook(HWND hWnd)
 
     ForceKill();
     param = (ob_thread_param_t *)malloc(sizeof(ob_thread_param_t));
+    if (!param)
+        return FALSE;
     param->_this = this;
     param->hWnd = hWnd;
+    m_bForceKill = false;
+    m_Loading = true;
+    m_LoadId = ++s_NextLoadId;
     m_hThread = (HANDLE)_beginthreadex(NULL, 0, OpenBookThread, param, 0, &threadID);
+    if (!m_hThread)
+    {
+        free(param);
+        m_Loading = false;
+        return FALSE;
+    }
     return TRUE;
 }
 
 BOOL Book::OpenBook(char *data, int size, HWND hWnd)
 {
-    unsigned threadID;
-    ob_thread_param_t *param;
-
+    ForceKill();
+    if (m_Data && m_Data != data)
+        free(m_Data);
     m_Data = data;
     m_Size = size;
-
-    ForceKill();
-    param = (ob_thread_param_t *)malloc(sizeof(ob_thread_param_t));
-    param->_this = this;
-    param->hWnd = hWnd;
-    m_hThread = (HANDLE)_beginthreadex(NULL, 0, OpenBookThread, param, 0, &threadID);
-    return TRUE;
+    return OpenBook(hWnd);
 }
 
 BOOL Book::CloseBook(void)
@@ -75,7 +84,7 @@ BOOL Book::CloseBook(void)
 
 BOOL Book::IsLoading(void)
 {
-    return m_hThread != NULL;
+    return m_Loading.load();
 }
 
 wchar_t * Book::GetText(void)
@@ -105,7 +114,15 @@ chapters_t * Book::GetChapters(void)
 
 void Book::SetChapterRule(chapter_rule_t *rule)
 {
-    m_Rule = rule;
+    if (rule)
+    {
+        m_RuleStorage = *rule;
+        m_RuleStorage.keyword[ARRAYSIZE(m_RuleStorage.keyword) - 1] = 0;
+        m_RuleStorage.regex[ARRAYSIZE(m_RuleStorage.regex) - 1] = 0;
+        m_Rule = &m_RuleStorage;
+    }
+    else
+        m_Rule = NULL;
 }
 
 void Book::JumpChapter(HWND hWnd, int index)
@@ -199,6 +216,13 @@ BOOL Book::DecodeText(const char *src, int srcsize, wchar_t **dst, int *dstsize)
 {
     type_t bom = encoding_unknown;
 
+    if (!dst || !dstsize)
+        return FALSE;
+    *dst = NULL;
+    *dstsize = 0;
+    if (!src || srcsize < 0 || m_bForceKill)
+        return FALSE;
+
     if (encoding_unknown != (bom = check_bom(src, srcsize)))
     {
         if (utf8 == bom)
@@ -211,8 +235,15 @@ BOOL Book::DecodeText(const char *src, int srcsize, wchar_t **dst, int *dstsize)
         {
             src += 2;
             srcsize -= 2;
+            if (srcsize % sizeof(wchar_t) != 0)
+                return FALSE;
             *dstsize = srcsize / 2;
             *dst = (wchar_t *)malloc(sizeof(wchar_t) * ((*dstsize) + 1));
+            if (!*dst)
+            {
+                *dstsize = 0;
+                return FALSE;
+            }
             memcpy(*dst, src, srcsize);
             (*dst)[*dstsize] = 0;
         }
@@ -220,8 +251,15 @@ BOOL Book::DecodeText(const char *src, int srcsize, wchar_t **dst, int *dstsize)
         {
             src += 2;
             srcsize -= 2;
+            if (srcsize % sizeof(wchar_t) != 0)
+                return FALSE;
             *dstsize = srcsize / 2;
             *dst = (wchar_t *)malloc(sizeof(wchar_t) * ((*dstsize) + 1));
+            if (!*dst)
+            {
+                *dstsize = 0;
+                return FALSE;
+            }
             memcpy(*dst, src, srcsize);
             (*dst)[*dstsize] = 0;
             *dst = (wchar_t *)be_to_le((char *)(*dst), srcsize);
@@ -241,8 +279,13 @@ BOOL Book::DecodeText(const char *src, int srcsize, wchar_t **dst, int *dstsize)
         *dst = ansi_to_utf16(src, srcsize, dstsize);
     }
 
-    FormatText(*dst, dstsize);
-
+    if (!*dst || m_bForceKill || (*dstsize > 0 && !FormatText(*dst, dstsize)))
+    {
+        free(*dst);
+        *dst = NULL;
+        *dstsize = 0;
+        return FALSE;
+    }
     return TRUE;
 }
 
@@ -341,6 +384,11 @@ BOOL Book::FormatText(wchar_t *p_data, int *p_len)
 
     while (GetLine(p_src_text, src_len - (int)(p_src_text - p_data), &line_len, &lf_len, &is_blank_line, &prefix_blank_len, &suffix_blank_len))
     {
+        if (m_bForceKill)
+        {
+            free(p_dst_text);
+            return FALSE;
+        }
         if (is_blank_line)
         {
             if (is_first_line || ++blank_line_num >= MAX_BLANK_LINE)
@@ -393,6 +441,11 @@ BOOL Book::FormatText(wchar_t *p_data, int *p_len)
         p_src_text += line_len + lf_len; // CRLF
     }
 
+    if (m_bForceKill)
+    {
+        free(p_dst_text);
+        return FALSE;
+    }
     memcpy(p_data, p_dst_text, sizeof(wchar_t) * dst_len);
     p_data[dst_len] = 0;
     *p_len = dst_len;
@@ -421,6 +474,8 @@ BOOL Book::GetLine(wchar_t* text, int len, int *line_len, int *lf_len, int *is_b
 
     for (i = 0; i < len; i++)
     {
+        if ((i & 0xfff) == 0 && m_bForceKill)
+            return FALSE;
         if (is_blank(text[i]))
         {
             if (is_prefix && prefix_blank_len)
@@ -472,13 +527,17 @@ void Book::ForceKill(void)
     if (m_hThread)
     {
         m_bForceKill = TRUE;
-        if (WAIT_TIMEOUT == WaitForSingleObject(m_hThread, 5000))
+        CancelSynchronousIo(m_hThread);
+        // The owner joins before freeing the book. Never terminate a parser
+        // while it may hold CRT/XML locks or own partially built containers.
+        while (WaitForSingleObject(m_hThread, 50) == WAIT_TIMEOUT)
         {
-            ASSERT(FALSE);
-            TerminateThread(m_hThread, 0);
+            // Also catch I/O started just after the first cancellation request.
+            CancelSynchronousIo(m_hThread);
         }
         CloseHandle(m_hThread);
         m_hThread = NULL;
+        m_Loading = false;
     }
 }
 
@@ -486,17 +545,24 @@ unsigned __stdcall Book::OpenBookThread(void* pArguments)
 {
     ob_thread_param_t *param = (ob_thread_param_t *)pArguments;
     Book *_this = param->_this;
+    HWND hWnd = param->hWnd;
+    ULONG_PTR loadId = _this->m_LoadId;
     BOOL result = FALSE;
-
-    _this->m_bForceKill = FALSE;
-    result = _this->ParserBook(param->hWnd);
-    if (param->hWnd && !_this->m_bForceKill)
-    {
-        PostMessage(param->hWnd, WM_OPEN_BOOK, result ? 1 : 0, NULL);
-    }
     free(param);
-    CloseHandle(_this->m_hThread);
-    _this->m_hThread = NULL;
-    _endthreadex(0);
+
+    try
+    {
+        if (!_this->m_bForceKill)
+            result = _this->ParserBook(hWnd);
+    }
+    catch (...)
+    {
+        // A bad regex or allocation failure must not escape the thread entry.
+        _this->CloseBook();
+    }
+    _this->m_Loading = false;
+    if (hWnd && !_this->m_bForceKill)
+        PostMessage(hWnd, WM_OPEN_BOOK, result ? 1 : 0, (LPARAM)loadId);
+    // Only the owning thread closes m_hThread, including on cancellation.
     return 0;
 }

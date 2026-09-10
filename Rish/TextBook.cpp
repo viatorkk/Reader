@@ -1,6 +1,46 @@
 ﻿#include "TextBook.h"
 #include "types.h"
 #include <regex>
+#include <limits.h>
+
+namespace
+{
+// Keep standard regex semantics, but allow a long search to observe cancellation
+// even before regex_search returns its first match.
+struct ChapterSearchCancelled {};
+
+class ChapterTextIterator
+{
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using value_type = wchar_t;
+    using difference_type = ptrdiff_t;
+    using pointer = const wchar_t*;
+    using reference = const wchar_t&;
+
+    ChapterTextIterator() : m_text(NULL), m_cancel(NULL) {}
+    ChapterTextIterator(pointer text, const std::atomic<bool>* cancel)
+        : m_text(text), m_cancel(cancel) {}
+    pointer base() const { return m_text; }
+    reference operator*() const { CheckCancelled(); return *m_text; }
+    pointer operator->() const { CheckCancelled(); return m_text; }
+    ChapterTextIterator& operator++() { CheckCancelled(); ++m_text; return *this; }
+    ChapterTextIterator& operator--() { CheckCancelled(); --m_text; return *this; }
+    ChapterTextIterator operator++(int) { auto old = *this; ++*this; return old; }
+    ChapterTextIterator operator--(int) { auto old = *this; --*this; return old; }
+    bool operator==(const ChapterTextIterator& other) const { return m_text == other.m_text; }
+    bool operator!=(const ChapterTextIterator& other) const { return !(*this == other); }
+
+private:
+    void CheckCancelled() const
+    {
+        if (m_cancel && m_cancel->load(std::memory_order_relaxed))
+            throw ChapterSearchCancelled{};
+    }
+    pointer m_text;
+    const std::atomic<bool>* m_cancel;
+};
+}
 
 
 wchar_t TextBook::m_ValidChapter[] =
@@ -86,14 +126,16 @@ BOOL TextBook::ReadBook(void)
 {
     FILE *fp = NULL;
     char *buf = NULL;
-    int len;
-    int size;
+    int len = 0;
+    __int64 fileSize = 0;
     BOOL ret = FALSE;
 
-    if (m_Data && m_Size > 0)
+    if (m_Data)
     {
         buf = m_Data;
         len = m_Size;
+        if (len <= 0 || len > INT_MAX / (int)sizeof(wchar_t) - 1)
+            goto end;
     }
     else if (m_fileName[0])
     {
@@ -101,18 +143,28 @@ BOOL TextBook::ReadBook(void)
         if (!fp)
             goto end;
 
-        fseek(fp, 0, SEEK_END);
-        len = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
+        if (_fseeki64(fp, 0, SEEK_END) != 0)
+            goto end;
+        fileSize = _ftelli64(fp);
+        if (fileSize <= 0 || fileSize > INT_MAX / (int)sizeof(wchar_t) - 1
+            || _fseeki64(fp, 0, SEEK_SET) != 0)
+            goto end;
+        len = (int)fileSize;
 
-        buf = (char *)malloc(len + 2);
-        buf[len] = 0;
-        buf[len+1] = 0;
+        buf = (char *)malloc((size_t)len + 2);
         if (!buf)
             goto end;
-        size = (int)fread(buf, 1, len, fp);
-        if (size != len)
-            goto end;
+        buf[len] = 0;
+        buf[len+1] = 0;
+        for (int offset = 0; offset < len;)
+        {
+            if (m_bForceKill)
+                goto end;
+            int chunk = (len - offset < 64 * 1024) ? len - offset : 64 * 1024;
+            if (fread(buf + offset, 1, chunk, fp) != (size_t)chunk)
+                goto end;
+            offset += chunk;
+        }
     }
     else
     {
@@ -165,6 +217,7 @@ BOOL TextBook::ParserChaptersDefault(void)
     wchar_t *text = m_Text;
     wchar_t title[MAX_CHAPTER_LENGTH] = { 0 };
     int line_size;
+    int lf_size;
     int title_len = 0;
     BOOL bFound = FALSE;
     int idx_1 = -1, idx_2 = -1;
@@ -177,7 +230,7 @@ BOOL TextBook::ParserChaptersDefault(void)
             return FALSE;
         }
 
-        if (!GetLine(text, m_Length - (int)(text - m_Text), &line_size, NULL, NULL, NULL, NULL))
+        if (!GetLine(text, m_Length - (int)(text - m_Text), &line_size, &lf_size, NULL, NULL, NULL))
         {
             break;
         }
@@ -188,18 +241,20 @@ BOOL TextBook::ParserChaptersDefault(void)
         idx_2 = -1;
         for (int i = 0; i < line_size; i++)
         {
+            if ((i & 0xfff) == 0 && m_bForceKill)
+                return FALSE;
             if (text[i] == _T('第'))
             {
                 idx_1 = i;
             }
             if (idx_1 > -1
-                && ((line_size > i + 1 && text[i + 1] == _T(' ')
-                    || text[i + 1] == _T('\t'))
-                    || text[i + 1] == 0x3000 // Full Angle space
-                    || text[i + 1] == 0xA0 // Full Angle space
-                    || line_size <= i + 1)
+                && (i + 1 >= line_size
+                    || text[i + 1] == _T(' ')
+                    || text[i + 1] == _T('\t')
+                    || text[i + 1] == 0x3000
+                    || text[i + 1] == 0xA0
                     || text[i + 1] == _T('：')
-                    || text[i + 1] == _T(':'))
+                    || text[i + 1] == _T(':')))
             {
                 if (text[i] == _T('卷')
                     || text[i] == _T('章')
@@ -247,7 +302,7 @@ BOOL TextBook::ParserChaptersDefault(void)
         }
 
         // set index
-        text += line_size + 1; // add 0x0a
+        text += line_size + lf_size;
     }
 
     return TRUE;
@@ -258,6 +313,7 @@ BOOL TextBook::ParserChaptersKeyword(void)
     wchar_t *text = m_Text;
     wchar_t title[MAX_CHAPTER_LENGTH] = { 0 };
     int line_size;
+    int lf_size;
     int title_len = 0;
     BOOL bFound = FALSE;
     int idx_1 = -1;
@@ -271,7 +327,7 @@ BOOL TextBook::ParserChaptersKeyword(void)
             return FALSE;
         }
 
-        if (!GetLine(text, m_Length - (int)(text - m_Text), &line_size, NULL, NULL, NULL, NULL))
+        if (!GetLine(text, m_Length - (int)(text - m_Text), &line_size, &lf_size, NULL, NULL, NULL))
         {
             break;
         }
@@ -282,8 +338,10 @@ BOOL TextBook::ParserChaptersKeyword(void)
         {
             bFound = FALSE;
             idx_1 = -1;
-            for (int i = 0; i < line_size; i++)
+            for (int i = 0; i <= line_size - cmplen; i++)
             {
+                if ((i & 0xfff) == 0 && m_bForceKill)
+                    return FALSE;
                 if (wcsncmp(text+i, m_Rule->keyword, cmplen) == 0)
                 {
                     idx_1 = i;
@@ -305,7 +363,7 @@ BOOL TextBook::ParserChaptersKeyword(void)
         }
 
         // set index
-        text += line_size + 1; // add 0x0a
+        text += line_size + lf_size;
     }
     return TRUE;
 }
@@ -315,50 +373,37 @@ BOOL TextBook::ParserChaptersRegex(void)
     wchar_t title[MAX_CHAPTER_LENGTH] = { 0 };
     int title_len = 0;
     chapter_item_t chapter;
-    int offset = 0;
-    std::wcmatch cm;
-    std::wregex *e = NULL;
-    TCHAR *text = m_Text;
+    std::match_results<ChapterTextIterator> cm;
+    ChapterTextIterator text(m_Text, &m_bForceKill);
+    const ChapterTextIterator end(m_Text + m_Length, &m_bForceKill);
 
     try
     {
-        e = new std::wregex(m_Rule->regex);    
+        std::wregex expression(m_Rule->regex);
+        // Empty matches are not chapter titles and must never stall the cursor.
+        while (!m_bForceKill && text != end
+            && std::regex_search(text, end, cm, expression, std::regex_constants::match_not_null))
+        {
+            int matchedLength = (int)(cm[0].second.base() - cm[0].first.base());
+            title_len = matchedLength < (MAX_CHAPTER_LENGTH - 1) ? matchedLength : MAX_CHAPTER_LENGTH - 1;
+            memcpy(title, cm[0].first.base(), title_len * sizeof(wchar_t));
+            title[title_len] = 0;
+
+            chapter.index = (int)(cm[0].first.base() - m_Text);
+            chapter.title = title;
+            chapter.title_len = title_len;
+            m_Chapters.push_back(chapter);
+
+            text = cm[0].second;
+        }
     }
     catch (...)
     {
-        if (e)
-        {
-            delete e;
-        }
+        m_Chapters.clear();
         return FALSE;
     }
 
-    while (std::regex_search(text, cm, *e, std::regex_constants::format_first_only))
-    {
-        if (m_bForceKill)
-        {
-            break;
-        }
-
-        title_len = (int)cm.length() < (MAX_CHAPTER_LENGTH - 1) ? (int)cm.length() : MAX_CHAPTER_LENGTH - 1;
-        memcpy(title, cm.str().c_str(), title_len * sizeof(wchar_t));
-        title[title_len] = 0;
-
-        chapter.index = offset + (int)cm.position();
-        chapter.title = title;
-        chapter.title_len = title_len;
-        m_Chapters.push_back(chapter);
-
-
-        text += cm.position() + cm.length();
-        offset += (int)cm.position() + (int)cm.length();
-    }
-    if (e)
-    {
-        delete e;
-    }
-
-    return TRUE;
+    return !m_bForceKill;
 }
 
 BOOL TextBook::IsChapter(wchar_t* text, int len)

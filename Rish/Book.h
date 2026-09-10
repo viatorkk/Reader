@@ -5,6 +5,7 @@
 #include "types.h"
 #include "Page.h"
 #include <string>
+#include <atomic>
 
 
 typedef struct chapter_item_t
@@ -82,6 +83,7 @@ public:
     BOOL OpenBook(char *data, int size, HWND hWnd);
     BOOL CloseBook(void);
     virtual BOOL IsLoading(void);
+    ULONG_PTR GetLoadId(void) const { return m_LoadId; }
     void SetFileName(const TCHAR *fileName);
     TCHAR * GetFileName(void);
     wchar_t * GetText(void);
@@ -117,7 +119,10 @@ protected:
     char *m_Data;
     int m_Size;
     HANDLE m_hThread;
-    BOOL m_bForceKill;
+    std::atomic<bool> m_bForceKill;
+    std::atomic<bool> m_Loading;
+    ULONG_PTR m_LoadId;
+    chapter_rule_t m_RuleStorage;
     chapter_rule_t *m_Rule;
 };
 

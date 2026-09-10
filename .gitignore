@@ -10,6 +10,7 @@
 /Release
 /x64
 /dist/
+/build/
 /.cache.dat
 /Rish.exe
 /doc/codex-session-handoff.md

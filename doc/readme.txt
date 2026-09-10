@@ -1,5 +1,9 @@
 Rish 使用说明
 
+版本：v3.0.0.7（2026-09-10）
+本版修复阅读加载、章节正则扫描和 EPUB 标题处理中的卡住与崩溃问题。
+升级前请关闭旧版程序，再替换 Rish.exe；保留原目录的 .cache.dat 和 .webview.dat。
+
 Rish 是一个轻量 Windows 阅读器，主要用于本地 TXT/EPUB 阅读和低干扰阅读场景。
 当前版本还提供微信读书与自定义网址入口；这两项网页功能依赖 Microsoft Edge WebView2 Runtime。
 

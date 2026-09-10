@@ -22,10 +22,27 @@ static int _wlen = 0;
 wchar_t* ansi_to_utf16(const char* str, int size, int* len)
 {
     wchar_t* result;
+    if (!len)
+        return NULL;
+    *len = 0;
+    if (!str || size < 0)
+        return NULL;
     *len = MultiByteToWideChar(CP_ACP, 0, str, size, NULL, 0);
-    result = (wchar_t*)malloc(((*len)+1)*sizeof(wchar_t));
+    if (size > 0 && *len <= 0)
+        return NULL;
+    result = (wchar_t*)malloc(((size_t)(*len)+1)*sizeof(wchar_t));
+    if (!result)
+    {
+        *len = 0;
+        return NULL;
+    }
     result[*len] = 0;
-    MultiByteToWideChar(CP_ACP, 0, str, size, (LPWSTR)result, *len);
+    if (*len > 0 && MultiByteToWideChar(CP_ACP, 0, str, size, result, *len) != *len)
+    {
+        free(result);
+        *len = 0;
+        return NULL;
+    }
     return result;
 }
 
@@ -42,10 +59,27 @@ char* utf16_to_ansi(const wchar_t* str, int size, int* len)
 wchar_t* utf8_to_utf16(const char* str, int size, int* len)
 {
     wchar_t* result;
+    if (!len)
+        return NULL;
+    *len = 0;
+    if (!str || size < 0)
+        return NULL;
     *len = MultiByteToWideChar(CP_UTF8, 0, str, size, NULL, 0);
-    result = (wchar_t*)malloc(((*len)+1) * sizeof(wchar_t));
+    if (size > 0 && *len <= 0)
+        return NULL;
+    result = (wchar_t*)malloc(((size_t)(*len)+1) * sizeof(wchar_t));
+    if (!result)
+    {
+        *len = 0;
+        return NULL;
+    }
     result[*len] = 0;
-    MultiByteToWideChar(CP_UTF8, 0, str, size, (LPWSTR)result, *len);
+    if (*len > 0 && MultiByteToWideChar(CP_UTF8, 0, str, size, result, *len) != *len)
+    {
+        free(result);
+        *len = 0;
+        return NULL;
+    }
     return result;
 }
 
